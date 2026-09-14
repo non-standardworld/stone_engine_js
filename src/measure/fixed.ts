@@ -37,6 +37,15 @@ const FULL_WIDTH_CATEGORIES = new Set([
   "cjkUnifiedIdeographs",
   "hangulSyllables",
   "cjkCompatibilityIdeographs",
+  "cjkCompatibilityIdeographsSupplement",
+  "cjkUnifiedIdeographsExtensionB",
+  "cjkUnifiedIdeographsExtensionC",
+  "cjkUnifiedIdeographsExtensionD",
+  "cjkUnifiedIdeographsExtensionE",
+  "cjkUnifiedIdeographsExtensionF",
+  "cjkUnifiedIdeographsExtensionG",
+  "cjkUnifiedIdeographsExtensionH",
+  "cjkUnifiedIdeographsExtensionI",
   "verticalForms",
   "cjkCompatibilityForms",
   "smallFormVariants",
@@ -45,6 +54,8 @@ const FULL_WIDTH_CATEGORIES = new Set([
   "transportAndMapSymbols",
   "supplementalSymbolsAndPictographs",
   "symbolsAndPictographsExtendedA",
+  "enclosedAlphanumericSupplement",
+  "enclosedIdeographicSupplement",
 ]);
 
 /** East Asian Width の近似。全角なら true。 */
@@ -63,6 +74,7 @@ export class FixedMeasurer implements FontMeasurer {
   private readonly ascentRatio: number;
   private readonly descentRatio: number;
 
+  /** 固定値の設定を受け取る。 */
   constructor(options: FixedMeasurerOptions = {}) {
     this.fullWidth = options.fullWidth ?? 1;
     this.halfWidth = options.halfWidth ?? 0.55;
@@ -71,6 +83,7 @@ export class FixedMeasurer implements FontMeasurer {
     this.descentRatio = options.descent ?? 0.25;
   }
 
+  /** 全角 / 半角 / 空白の固定幅を返す。 */
   advance(_font: ResolvedFont, size: number, char: string): number {
     const cp = char.codePointAt(0);
     if (cp === undefined) return 0;
@@ -81,6 +94,7 @@ export class FixedMeasurer implements FontMeasurer {
     return size * this.halfWidth;
   }
 
+  /** 固定のアセント／ディセントを返す。 */
   metrics(_font: ResolvedFont, size: number): FontMetrics {
     return { ascent: size * this.ascentRatio, descent: size * this.descentRatio };
   }

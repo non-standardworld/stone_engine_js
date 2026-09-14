@@ -62,6 +62,7 @@ export class StoneTextController {
   private disposed = false;
   private readonly fontsListener: (() => void) | null = null;
 
+  /** 計測器を決め、ブラウザならフォント読み込み完了イベントの監視を始める。 */
   constructor(options: ControllerOptions) {
     this.measurer = options.measurer === undefined ? getSharedCanvasMeasurer() : options.measurer;
     this.onLayout = options.onLayout;
@@ -87,6 +88,7 @@ export class StoneTextController {
     return ctx;
   }
 
+  /** 現在の入力でレイアウトし、結果を onLayout に渡す。 */
   private relayout(): StoneContext | null {
     if (this.disposed || !this.measurer || !this.input) return null;
     const { text, options, size } = this.input;
@@ -95,11 +97,13 @@ export class StoneTextController {
     return ctx;
   }
 
+  /** 計測器のキャッシュを破棄する（CanvasMeasurer の場合）。 */
   private invalidate(): void {
     const m = this.measurer as { invalidate?: () => void } | null;
     m?.invalidate?.();
   }
 
+  /** 未読み込みの Web フォントがあれば読み込み、完了後にレイアウトし直す。 */
   private ensureFonts(ctx: StoneContext, text: string): void {
     if (typeof document === "undefined" || !document.fonts?.load) return;
     const specs = new Set<string>();
@@ -127,6 +131,7 @@ export class StoneTextController {
       });
   }
 
+  /** イベント監視を解除し、以後のレイアウトを止める。 */
   dispose(): void {
     this.disposed = true;
     if (this.fontsListener && typeof document !== "undefined" && document.fonts?.removeEventListener) {

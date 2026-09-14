@@ -138,19 +138,30 @@ export interface SvgStringOptions {
   attributes?: Record<string, string | number>;
 }
 
+/** テキストノード用に & < > をエスケープする。 */
 function escapeText(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** 属性値用にエスケープする（escapeText に加えて二重引用符）。 */
 function escapeAttr(s: string): string {
   return escapeText(s).replace(/"/g, "&quot;");
 }
 
+/** 座標を小数 2 桁に丸めた文字列にする。 */
 function num(n: number): string {
   return String(Math.round(n * 100) / 100);
 }
 
-/** レイアウト結果を SVG 文字列にする（innerHTML や SSR で使う）。 */
+/** 属性名として許す形。空白・引用符・記号による属性の注入を防ぐ。 */
+const ATTR_NAME_RE = /^[A-Za-z_:][-A-Za-z0-9_:.]*$/;
+
+/** 追加属性として出力してよい名前かどうか。不正な名前とイベントハンドラ（on*）は拒否する。 */
+export function isSafeSvgAttributeName(name: string): boolean {
+  return ATTR_NAME_RE.test(name) && !/^on/i.test(name);
+}
+
+/** レイアウト結果を SVG 文字列にする（innerHTML や SSR で使う）。attributes の不正な名前は無視する。 */
 export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): string {
   const size = svgSize(ctx);
   const color = options.color ?? "currentColor";
@@ -165,6 +176,7 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
     'aria-hidden="true"',
   ];
   for (const [k, v] of Object.entries(options.attributes ?? {})) {
+    if (!isSafeSvgAttributeName(k)) continue;
     attrs.push(`${k}="${escapeAttr(String(v))}"`);
   }
   parts.push(`<svg ${attrs.join(" ")}>`);

@@ -39,11 +39,12 @@ const SR_ONLY: CSSProperties = {
   border: 0,
 };
 
+/** オプションを比較用の文字列にする（オブジェクトの同一性ではなく内容で依存配列を作るため）。 */
 function optionsKey(options: StoneOptions): string {
   return JSON.stringify(options);
 }
 
-/** コンテナ要素の大きさを ResizeObserver で追跡する。 */
+/** コンテナ要素の大きさ（clientWidth / clientHeight）を ResizeObserver で追跡する。 */
 function useContainerSize(ref: RefObject<HTMLElement | null>, enabled: boolean): Size | null {
   const [size, setSize] = useState<Size | null>(null);
   useIsomorphicLayoutEffect(() => {
@@ -216,6 +217,7 @@ export interface StoneTextProps extends StoneOptions {
   svgProps?: Omit<StoneSVGProps, "layout" | "color" | "showFrames">;
 }
 
+/** children に渡された文字列・数値・配列を 1 つのテキストにする。要素は無視する。 */
 function childrenToString(children: ReactNode): string {
   if (children == null || typeof children === "boolean") return "";
   if (typeof children === "string" || typeof children === "number") return String(children);
@@ -246,9 +248,12 @@ export function StoneText(props: StoneTextProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const layout = useStoneLayout({ text: content, options, width, height, containerRef: ref, measurer });
 
+  // onLayout の参照が変わっただけでは再通知しない（呼び出し側の useCallback に依存しない）
+  const onLayoutRef = useRef(onLayout);
+  onLayoutRef.current = onLayout;
   useEffect(() => {
-    if (layout && onLayout) onLayout(layout);
-  }, [layout, onLayout]);
+    if (layout) onLayoutRef.current?.(layout);
+  }, [layout]);
 
   const direction = options.direction ?? "lrTb";
   const fontsKey = JSON.stringify(options.fonts ?? {});

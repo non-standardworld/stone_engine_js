@@ -22,6 +22,7 @@ export function measureRuns(ctx: StoneContext): void {
   }
 }
 
+/** 縮小率を設定して計測とレイアウトを行い、収まったかどうかを返す。 */
 function layoutWithScale(ctx: StoneContext, scale: number): boolean {
   ctx.adjustFontScale = scale;
   measureRuns(ctx);
@@ -103,6 +104,7 @@ export function sizeThatFits(
   return layoutText(text, options, measurer, size).renderedSize;
 }
 
+/** 省略・0・非有限の寸法を Infinity（制限なし）にそろえる。 */
 function normalizeSize(size: LayoutSize): Size {
   const width = size.width;
   const height = size.height;

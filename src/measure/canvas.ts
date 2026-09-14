@@ -26,6 +26,7 @@ export class CanvasMeasurer implements FontMeasurer {
     return typeof document !== "undefined" && typeof document.createElement === "function";
   }
 
+  /** 計測用の 2D コンテキスト（OffscreenCanvas 優先）。 */
   private context(): Ctx2D | null {
     if (this.ctx) return this.ctx;
     try {
@@ -43,6 +44,7 @@ export class CanvasMeasurer implements FontMeasurer {
     return this.ctx;
   }
 
+  /** コンテキストのフォントを変更する（同じなら何もしない）。 */
   private setFont(ctx: Ctx2D, cssFont: string): void {
     if (this.currentFont !== cssFont) {
       ctx.font = cssFont;
@@ -57,6 +59,7 @@ export class CanvasMeasurer implements FontMeasurer {
     this.currentFont = "";
   }
 
+  /** measureText による送り幅（キャッシュ付き）。 */
   advance(font: ResolvedFont, size: number, char: string): number {
     const cssFont = cssFontString(font, size);
     const key = cssFont + SEP + char;
@@ -74,6 +77,7 @@ export class CanvasMeasurer implements FontMeasurer {
     return width;
   }
 
+  /** fontBoundingBoxAscent / Descent によるメトリクス（無い場合は近似）。 */
   metrics(font: ResolvedFont, size: number): FontMetrics {
     const cssFont = cssFontString(font, size);
     const cached = this.metricsCache.get(cssFont);

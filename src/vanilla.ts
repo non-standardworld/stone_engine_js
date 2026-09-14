@@ -54,12 +54,9 @@ export function mountStoneText(container: HTMLElement, options: MountOptions): S
 
   let observer: ResizeObserver | null = null;
   if (typeof ResizeObserver !== "undefined") {
-    observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      const box = entry?.contentRect;
-      const next: Size = box
-        ? { width: box.width, height: box.height }
-        : { width: container.clientWidth, height: container.clientHeight };
+    // 初回と同じ基準（clientWidth / clientHeight）で計測する
+    observer = new ResizeObserver(() => {
+      const next: Size = { width: container.clientWidth, height: container.clientHeight };
       if (containerSize && containerSize.width === next.width && containerSize.height === next.height) return;
       containerSize = next;
       run();

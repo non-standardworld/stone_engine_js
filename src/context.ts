@@ -19,6 +19,7 @@ import type {
 } from "./types.js";
 import { notNeedsToClockwiseInTbRl } from "./unicode.js";
 
+/** StoneOptions の既定値。 */
 export const DEFAULT_OPTIONS: Required<Omit<StoneOptions, "fonts">> = {
   fontSize: 17,
   lineHeightScale: 1.0,
@@ -41,6 +42,7 @@ export interface LineRange {
   end: number;
 }
 
+/** 点が矩形の内側（右端・下端は含まない）にあるかどうか。 */
 function rectContains(rect: Rect, point: Point): boolean {
   return (
     point.x >= rect.x &&
@@ -50,6 +52,7 @@ function rectContains(rect: Rect, point: Point): boolean {
   );
 }
 
+/** 矩形の中心と点の距離。 */
 function distance(rect: Rect, point: Point): number {
   const dx = point.x - (rect.x + rect.width * 0.5);
   const dy = point.y - (rect.y + rect.height * 0.5);
@@ -94,6 +97,7 @@ export class StoneContext {
   /** 実際にテキストが占めるサイズ。 */
   renderedSize: Size = { width: 0, height: 0 };
 
+  /** オプションと計測器からコンテキストを作る。省略されたオプションは DEFAULT_OPTIONS で埋める。 */
   constructor(options: StoneOptions, measurer: FontMeasurer) {
     this.fontSize = options.fontSize ?? DEFAULT_OPTIONS.fontSize;
     this.lineHeightScale = options.lineHeightScale ?? DEFAULT_OPTIONS.lineHeightScale;
@@ -111,10 +115,12 @@ export class StoneContext {
     this.fontManager = new FontManager(this.fonts, measurer);
   }
 
+  /** 縮小前の行送り（px）。 */
   get lineHeight(): number {
     return this.fontSize * this.lineHeightScale;
   }
 
+  /** 縮小前の行間（行送りからフォントサイズを引いたもの、px）。 */
   get lineGapHeight(): number {
     return this.fontSize * (this.lineHeightScale - 1);
   }
@@ -124,8 +130,14 @@ export class StoneContext {
     return this.fontSize * this.adjustFontScale;
   }
 
+  /** 縮小適用後の行送り。レイアウトはこの値で行を送る。 */
   get adjustLineHeight(): number {
     return this.adjustFontSize * this.lineHeightScale;
+  }
+
+  /** 縮小適用後の行間。 */
+  get adjustLineGapHeight(): number {
+    return this.adjustFontSize * (this.lineHeightScale - 1);
   }
 
   /** 元のテキスト。 */
@@ -139,6 +151,7 @@ export class StoneContext {
   // Advance
   //--------------------------------------------------------------//
 
+  /** トークンに属する run の送り幅の合計。 */
   advanceOfToken(token: Token): number {
     let total = 0;
     for (let i = token.start; i < token.end; i++) total += this.runs[i].advance;
@@ -149,6 +162,7 @@ export class StoneContext {
   // Token and run
   //--------------------------------------------------------------//
 
+  /** run がトークンの最後の文字かどうか。 */
   isLastInToken(run: Run): boolean {
     const token = this.tokens[run.tokenId];
     return run.tokenRunIndex >= token.end - token.start - 1;
@@ -187,18 +201,21 @@ export class StoneContext {
     return ranges;
   }
 
+  /** run ID の行番号。末尾（runs.length 以上）は最後の run の行を返す。 */
   lineOf(runId: number): number {
     if (this.runs.length === 0) return 0;
     if (runId < this.runs.length - 1) return this.runs[runId].line;
     return this.runs[this.runs.length - 1].line;
   }
 
+  /** run ID の位置が改行かどうか。末尾は最後の run で判定する。 */
   isNewlineAt(runId: number): boolean {
     if (this.runs.length === 0) return false;
     if (runId < this.runs.length - 1) return this.runs[runId].isNewline;
     return this.runs[this.runs.length - 1].isNewline;
   }
 
+  /** トークンの文字列。存在しなければ null。 */
   tokenString(tokenId: number): string | null {
     const token = this.tokens[tokenId];
     if (!token) return null;
@@ -211,15 +228,23 @@ export class StoneContext {
   // Geometry
   //--------------------------------------------------------------//
 
-  /** 行の先頭位置（run が無い行のカーソル位置などに使う）。 */
+  /** 受け取った範囲を現在の runs の長さに収める。 */
+  private clampRange(range: [number, number] | null): [number, number] {
+    const [lo, hi] = range ?? [0, this.runs.length];
+    return [Math.max(0, lo), Math.min(hi, this.runs.length)];
+  }
+
+  /** 行の先頭位置（run が無い行のカーソル位置などに使う）。縮小後の寸法で計算する。 */
   firstRunFrame(line: number): Rect {
+    const size = this.adjustFontSize;
+    const lineHeight = this.adjustLineHeight;
     if (this.direction === "lrTb") {
-      return { x: 0, y: line * this.lineHeight, width: 0, height: this.fontSize };
+      return { x: 0, y: line * lineHeight, width: 0, height: size };
     }
     return {
-      x: this.renderedSize.width - line * this.lineHeight - this.fontSize,
+      x: this.renderedSize.width - line * lineHeight - size,
       y: 0,
-      width: this.fontSize,
+      width: size,
       height: 0,
     };
   }
@@ -228,25 +253,27 @@ export class StoneContext {
   runFrameWithLineGap(index: number): Rect {
     const run = this.runs[index];
     if (run.line === 0) return { ...run.frame };
+    const gap = this.adjustLineGapHeight;
     if (this.direction === "lrTb") {
       return {
         x: run.frame.x,
-        y: run.frame.y - this.lineGapHeight,
+        y: run.frame.y - gap,
         width: run.frame.width,
-        height: run.frame.height + this.lineGapHeight,
+        height: run.frame.height + gap,
       };
     }
     return {
       x: run.frame.x,
       y: run.frame.y,
-      width: run.frame.width + this.lineGapHeight,
+      width: run.frame.width + gap,
       height: run.frame.height,
     };
   }
 
+  /** 横書きで点に最も近い文字位置を求める。 */
   private closestRunIndexH(point: Point, range: [number, number] | null): number {
     const isAll = range === null;
-    const [lo, hi] = range ?? [0, this.runs.length];
+    const [lo, hi] = this.clampRange(range);
 
     // 最も近い行
     let minDy = Infinity;
@@ -302,14 +329,14 @@ export class StoneContext {
     return index;
   }
 
+  /** 縦書きで点に最も近い文字位置を求める。 */
   private closestRunIndexV(point: Point, range: [number, number] | null): number {
     const isAll = range === null;
-    const [lo, hi] = range ?? [0, this.runs.length];
+    const [lo, hi] = this.clampRange(range);
 
     let minDx = Infinity;
     let line = -1;
     for (let i = lo; i < hi; i++) {
-      if (i >= this.runs.length) break;
       if (this.runs[i].line === line) continue;
       const runFrame = this.firstRunFrame(this.runs[i].line);
       const dx = Math.abs(point.x - (runFrame.x + runFrame.width * 0.5));
@@ -369,7 +396,7 @@ export class StoneContext {
 
   /** 点を含む run の ID。無ければ null。 */
   hitRunIndex(point: Point, range: [number, number] | null = null): number | null {
-    const [lo, hi] = range ?? [0, this.runs.length];
+    const [lo, hi] = this.clampRange(range);
     if (this.runs.length === 0) {
       if (this.direction !== "lrTb") return null;
       const runFrame = this.firstRunFrame(0);
@@ -386,6 +413,7 @@ export class StoneContext {
   // Tate chu yoko
   //--------------------------------------------------------------//
 
+  /** トークンが縦中横で組まれるかどうか（先頭の run で判定する）。 */
   isTateChuYokoToken(token: Token): boolean {
     if (token.start >= token.end || token.start >= this.runs.length) return false;
     return this.isTateChuYoko(this.runs[token.start]);

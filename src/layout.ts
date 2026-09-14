@@ -16,6 +16,7 @@ import type { Rect } from "./types.js";
 
 const EPS = 1e-6;
 
+/** 矩形を平行移動した新しい矩形を返す。 */
 function shiftRect(rect: Rect, dx: number, dy: number): Rect {
   return { x: rect.x + dx, y: rect.y + dy, width: rect.width, height: rect.height };
 }
@@ -27,12 +28,15 @@ export class Layouter {
   private y = 0;
   private tmpX: number | null = null;
 
+  /** コンテキストの runs を対象にレイアウタを作る。 */
   constructor(private readonly ctx: StoneContext) {}
 
+  /** レイアウト領域の右端（横書きの折り返し位置）。 */
   private get maxX(): number {
     return this.ctx.renderSize.width;
   }
 
+  /** レイアウト領域の下端（縦書きの折り返し位置）。 */
   private get maxY(): number {
     return this.ctx.renderSize.height;
   }
@@ -121,6 +125,7 @@ export class Layouter {
     };
   }
 
+  /** 縦書きで現在の run の位置と矩形を決める（回転・縦中横・約物の詰めを含む）。 */
   private layoutRunTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -195,6 +200,7 @@ export class Layouter {
     run.frame = { x: this.x, y: this.y, width: run.advance, height };
   }
 
+  /** 方向に応じて run を配置する。 */
   private layoutRun(): void {
     if (this.ctx.direction === "lrTb") this.layoutRunLrTb();
     else this.layoutRunTbRl();
@@ -236,6 +242,7 @@ export class Layouter {
     this.y += ctx.adjustLineHeight;
   }
 
+  /** 縦書きの行末処理をして次の行（左の列）へ進む。 */
   private goNextLineTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -267,6 +274,7 @@ export class Layouter {
     this.y = 0;
   }
 
+  /** 禁則処理を行ってから改行する。 */
   private goNextLine(): void {
     this.processNotEndingAndStarting();
 
@@ -277,6 +285,7 @@ export class Layouter {
     this.lineStartRunId = this.runId + 1;
   }
 
+  /** 横書きで次の文字へ進み、次のトークンが収まらなければ改行する。 */
   private goNextCharLrTb(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -300,6 +309,7 @@ export class Layouter {
     }
   }
 
+  /** 縦書きで次の文字へ進む。縦中横の途中では横に並べる。 */
   private goNextCharTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -335,6 +345,7 @@ export class Layouter {
     }
   }
 
+  /** 方向に応じて次の文字へ進む。 */
   private goNextChar(): void {
     if (this.ctx.direction === "lrTb") this.goNextCharLrTb();
     else this.goNextCharTbRl();
@@ -400,6 +411,7 @@ export class Layouter {
     if (lower !== -1) fn(lower, upper + 1);
   }
 
+  /** 領域に収まらない run を invisible / ellipsis にする。 */
   private updateVisibility(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -459,6 +471,7 @@ export class Layouter {
     }
   }
 
+  /** 横書きの 1 行を textAlign に応じて寄せる。 */
   private alignLineLrTb(start: number, end: number): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -515,6 +528,7 @@ export class Layouter {
     }
   }
 
+  /** 横書きの描画サイズを更新する。 */
   private updateRenderedSizeLrTb(): void {
     const ctx = this.ctx;
     let maxX = 0;
@@ -527,6 +541,7 @@ export class Layouter {
     ctx.renderedSize = { width: maxX, height };
   }
 
+  /** 横書きの後処理。 */
   private postLayoutLrTb(): void {
     this.shiftPositionLrTb();
     this.forEachLine((start, end) => this.alignLineLrTb(start, end));
@@ -571,6 +586,7 @@ export class Layouter {
     }
   }
 
+  /** 縦中横の数字を列の中央に寄せる。 */
   private applyTateChuYokoTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -586,6 +602,7 @@ export class Layouter {
     }
   }
 
+  /** 縦書きの 1 列を textAlign に応じて寄せる。 */
   private alignLineTbRl(start: number, end: number): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -651,6 +668,7 @@ export class Layouter {
     }
   }
 
+  /** 縦書きの描画サイズを更新する。 */
   private updateRenderedSizeTbRl(): void {
     const ctx = this.ctx;
     let minX = Infinity;
@@ -669,6 +687,7 @@ export class Layouter {
     };
   }
 
+  /** 縦書きの後処理。 */
   private postLayoutTbRl(): void {
     this.shiftPositionTbRl();
     this.applyTateChuYokoTbRl();
@@ -677,6 +696,7 @@ export class Layouter {
     this.updateVisibility();
   }
 
+  /** 方向に応じた後処理。 */
   private postLayout(): void {
     if (this.ctx.direction === "lrTb") this.postLayoutLrTb();
     else this.postLayoutTbRl();

@@ -45,3 +45,40 @@ describe("parser", () => {
     expect(runs[3].fontId).toBe(0);
   });
 });
+
+describe("unicode blocks", () => {
+  it("classifies supplementary-plane CJK and enclosed symbols", async () => {
+    const { scriptOfChar, unicodeCategoryOf, isFullWidthCodePoint } = await import("../src/index.js");
+    expect(unicodeCategoryOf(0x20000)).toBe("cjkUnifiedIdeographsExtensionB");
+    expect(scriptOfChar("𠀀")).toBe("japanese"); // U+20000
+    expect(fontIdForChar("𠀀")).toBe(1);
+    expect(isFullWidthCodePoint(0x20000)).toBe(true);
+    expect(unicodeCategoryOf(0x1f1e6)).toBe("enclosedAlphanumericSupplement"); // regional indicator
+    expect(scriptOfChar("🈚")).toBe("emoji"); // U+1F21A
+    expect(scriptOfChar("🇯")).toBe("emoji");
+    expect(unicodeCategoryOf(0x2fa1f)).toBe("cjkCompatibilityIdeographsSupplement");
+    expect(unicodeCategoryOf(0x2ee5f)).toBe("cjkUnifiedIdeographsExtensionI");
+    expect(unicodeCategoryOf(0x2ee60)).toBeNull();
+  });
+
+  it("clamps ranges passed to hit-testing helpers", async () => {
+    const { layoutText, FixedMeasurer } = await import("../src/index.js");
+    const ctx = layoutText("あい", { fontSize: 10, dividesByWords: false }, new FixedMeasurer());
+    expect(ctx.hitRunIndex({ x: 15, y: 5 }, [0, 99])).toBe(1);
+    expect(ctx.closestRunIndex({ x: 18, y: 5 }, [0, 99])).toBe(2);
+    expect(ctx.closestRunIndex({ x: 3, y: 5 }, [-5, 99])).toBe(0);
+  });
+
+  it("uses adjusted metrics for first-run frames after shrinking", async () => {
+    const { layoutText, FixedMeasurer } = await import("../src/index.js");
+    const ctx = layoutText(
+      "あいうえおかきくけこ",
+      { fontSize: 20, dividesByWords: false, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 },
+      new FixedMeasurer(),
+      { width: 100, height: 20 },
+    );
+    expect(ctx.adjustFontScale).toBeLessThan(1);
+    expect(ctx.firstRunFrame(0).height).toBeCloseTo(ctx.adjustFontSize);
+    expect(ctx.firstRunFrame(1).y).toBeCloseTo(ctx.adjustLineHeight);
+  });
+});

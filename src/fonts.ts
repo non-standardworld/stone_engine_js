@@ -71,19 +71,23 @@ export function cssFontString(font: ResolvedFont, size: number): string {
  * size にはレイアウト時のフォントサイズ（adjustFontSize）を渡す。文字種スケールは内部で掛ける。
  */
 export class FontManager {
+  /** フォント一覧と計測器を持つ。 */
   constructor(
     public readonly fonts: ResolvedFont[],
     public readonly measurer: FontMeasurer,
   ) {}
 
+  /** フォント ID のフォント。範囲外なら latin。 */
   font(fontId: number): ResolvedFont {
     return this.fonts[fontId] ?? this.fonts[0];
   }
 
+  /** フォント ID の文字種。 */
   script(fontId: number): Script {
     return this.font(fontId).script;
   }
 
+  /** フォント ID の文字種スケール。 */
   fontScale(fontId: number): number {
     return this.font(fontId).scale;
   }
@@ -93,11 +97,13 @@ export class FontManager {
     return size * this.fontScale(fontId);
   }
 
+  /** 文字の送り幅（px、文字種スケール適用後）。 */
   advance(fontId: number, size: number, char: string): number {
     const font = this.font(fontId);
     return this.measurer.advance(font, this.scaledSize(fontId, size), char);
   }
 
+  /** アセント／ディセント（px）。指定があれば比率、無ければ計測値を使う。 */
   metrics(fontId: number, size: number): FontMetrics {
     const font = this.font(fontId);
     const scaled = this.scaledSize(fontId, size);
@@ -111,14 +117,17 @@ export class FontManager {
     };
   }
 
+  /** アセント（px）。 */
   ascent(fontId: number, size: number): number {
     return this.metrics(fontId, size).ascent;
   }
 
+  /** ディセント（px）。 */
   descent(fontId: number, size: number): number {
     return this.metrics(fontId, size).descent;
   }
 
+  /** canvas 用の CSS font 文字列。 */
   cssFont(fontId: number, size: number): string {
     return cssFontString(this.font(fontId), this.scaledSize(fontId, size));
   }

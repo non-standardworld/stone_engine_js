@@ -19,6 +19,7 @@ type SegmenterLike = { segment(input: string): Iterable<{ segment: string }> };
 let wordSegmenter: SegmenterLike | null | undefined;
 let graphemeSegmenter: SegmenterLike | null | undefined;
 
+/** 単語分割用の Intl.Segmenter（無ければ null）。 */
 function getWordSegmenter(): SegmenterLike | null {
   if (wordSegmenter !== undefined) return wordSegmenter;
   try {
@@ -30,6 +31,7 @@ function getWordSegmenter(): SegmenterLike | null {
   return wordSegmenter;
 }
 
+/** 書記素分割用の Intl.Segmenter（無ければ null）。 */
 function getGraphemeSegmenter(): SegmenterLike | null {
   if (graphemeSegmenter !== undefined) return graphemeSegmenter;
   try {
@@ -98,6 +100,7 @@ export function supportsWordSegmentation(): boolean {
   return getWordSegmenter() !== null;
 }
 
+/** 1 書記素の Run を作る。改行は直前の run のフォントを引き継ぐ。 */
 function createRun(char: string, tokenId: number, tokenRunIndex: number, prevFontId: number): Run {
   const isNewline = isNewlineChar(char);
   const fontId = isNewline ? prevFontId : fontIdForChar(char);

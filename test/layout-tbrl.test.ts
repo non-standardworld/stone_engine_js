@@ -52,11 +52,11 @@ describe("layout tbRl", () => {
     const three = runOf(ctx, "3").run;
     expect(ctx.isTateChuYoko(three)).toBe(false);
     expect(ctx.isClockwise(three)).toBe(true);
-    // 縦中横は列の中央に寄せる
-    const total = one.advance + two.advance;
-    expect(one.frame.x).toBeCloseTo(one.frame.x); // sanity
+    // 縦中横は列の中央に寄せる（同じ列の先頭 run「あ」の中心と一致する）
     expect(one.position.x).toBeCloseTo(two.position.x - one.advance);
-    expect((one.frame.x + two.frame.x + two.frame.width) / 2).toBeCloseTo(ctx.runs[0].frame.x + 5 + (one.frame.x - (ctx.runs[0].frame.x + (10 - total) / 2)));
+    const center = (one.frame.x + two.frame.x + two.frame.width) / 2;
+    expect(center).toBeCloseTo(ctx.runs[0].frame.x + 5);
+    expect(one.frame.x).toBeGreaterThan(ctx.runs[0].frame.x - 1); // 列からはみ出さない
   });
 
   it("can turn tate-chu-yoko off", () => {

@@ -12,6 +12,7 @@ const firstHalfSet = new Set(Array.from(FIRST_HALF));
 const secondHalfSet = new Set(Array.from(SECOND_HALF));
 const quarterSet = new Set(Array.from(QUARTER));
 
+/** 書記素の先頭コードポイントだけを取り出す。 */
 function firstCodePointString(char: string): string {
   const cp = char.codePointAt(0);
   return cp === undefined ? "" : String.fromCodePoint(cp);
@@ -41,10 +42,12 @@ export const KINSOKU_NOT_ENDING: ReadonlySet<string> = new Set(
 /** ぶら下げ対象文字。 */
 export const KINSOKU_HANGING: ReadonlySet<string> = new Set(Array.from("、。"));
 
+/** 行頭禁則文字かどうか。 */
 export function isNotStartingChar(char: string): boolean {
   return KINSOKU_NOT_STARTING.has(firstCodePointString(char));
 }
 
+/** 行末禁則文字かどうか。 */
 export function isNotEndingChar(char: string): boolean {
   return KINSOKU_NOT_ENDING.has(firstCodePointString(char));
 }
@@ -61,6 +64,7 @@ const NEWLINES: ReadonlySet<string> = new Set([
   String.fromCharCode(0x2029),
 ]);
 
+/** 改行文字かどうか。 */
 export function isNewlineChar(char: string): boolean {
   return NEWLINES.has(char);
 }

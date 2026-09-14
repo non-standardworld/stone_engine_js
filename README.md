@@ -1,141 +1,164 @@
-stone_engineは、日本語の文字組版を実現する、テキストレンダリングエンジンである。
+# @non-standardworld/stone-engine
 
-## 目的
+日本語組版エンジン [stone_engine](https://github.com/ndc-stone/stone_engine)（Nihon Design Center、iOS / Swift 製）の JavaScript / TypeScript 移植です。
+縦書き、禁則処理、約物の半角詰め、縦中横、文字種ごとのフォントとスケール指定といったエンジンの機能を、ブラウザ標準のフォント描画の上で再現します。React 用のコンポーネントと、フレームワークを使わない DOM 用 API を同梱しています。
 
-stone_engineは、iOS上で動作するテキストレンダリングエンジンである。
-その第一義の目的は、日本語の高度な組版を実現することである。具体的には、縦書き、禁足処理、約物処理、文字種ごとのスケーリングが挙げられる。
-また従来の紙媒体によるページ分割を前提とした組版とは違い、電子媒体による大きさに制約のない画面上での組版を模索するものである。
+オリジナル（Swift 版）の設計思想と機能説明は [README.original.md](./README.original.md) を参照してください。Swift のソースは `Sources/` にそのまま残しています。
 
-副次的な目的として、プログラマにとって直接内部構造を触ることのできるレンダリングエジンがほしい、という欲求がある。
-あらゆるOSやプラットフォームにとって、テキストのレンダリングとは極めて基本的な機能の一つであり、十分な機能のものがすでに与えられている。
-iOSであれば、UIKitのUILabelやUITextView、Swift UIのTextなどがそれにあたる。
-それらは使い勝手は問題ないものであるが、その一方で高度にブラックボックス化されており、内部情報に十分にアクセスすることはできない。
-たとえば、UILabelで、文字ごとにそれがframeのどこにレイアウトされているか、という情報を得ることはできない。
-プログラマであるならば、それらの情報にアクセスできることで、どれだけの可能性が広がるか想像できるだろう。
+## 仕組み
 
-そのような、ある種トイボックスとして使えるようなレンダリングエンジンを提供することが、隠された目的である。
+Swift 版は CoreText でグリフを取り出し、`STLayout` が 1 文字ずつ位置を決め、`STLabel` が CoreGraphics で描画していました。この移植では
 
-## 方針
+- 解析（`STParser`）は `Intl.Segmenter` で単語／書記素に分割
+- 計測（CoreText の送り幅・アセント／ディセント）は Canvas 2D の `measureText` で取得
+- レイアウト（`STLayout` / `STContext`）は TypeScript にそのまま移植
+- 描画は SVG の `<text>` 要素を 1 文字ずつ置く。縦書きの欧文は `rotate(90)`、和文は `font-feature-settings: "vert"` で縦組み用グリフに置換
 
-上述の目的のために、以下の方針を定める。
+という構成です。フォントファイルを読み込む必要はなく、CSS で使える Web フォント（Google Fonts など）やシステムフォントがそのまま使えます。レイアウト結果は 1 文字ごとの位置・矩形・行番号として取り出せるので、Swift 版と同じく「内部構造を直接触れる」エンジンになっています。
 
-### アプリのための日本語文字組版
+## インストール
 
-電子媒体、中でもアプリに特化した日本語文字組版のあるべき姿を模索する。
-紙媒体と比較して、アプリで使われる画面には、以下の特徴がある。
+```bash
+npm install github:non-standardworld/stone_engine_js
+```
 
-- 画面サイズが不定
-- 実行中にサイズが変更される
-- スクロールにより極端に広くなる
-- ページングの不在
+npm に公開する場合は `npm publish` 後に `npm install @non-standardworld/stone-engine` でも同じです。React は peer dependency（任意）です。
 
-これらの条件下で、あるべき組版のありかたとその実装を実現する。
+## React で使う
 
-### 実行速度を最優先
+```tsx
+import { StoneText } from "@non-standardworld/stone-engine/react";
 
-テキストレンダリングエンジンは、low levelの機能である。
-あらゆるアプリの基底として使われるものであり、そこには高い実行速度が求められる。
-stone_engineは、実行速度を最優先として、そのアーキテクチャ、データ構成、使用言語などを決めていく。
+export function Article() {
+  return (
+    <StoneText
+      fontSize={18}
+      lineHeightScale={1.9}
+      textAlign="justify"
+      fonts={{
+        japanese: { family: '"Noto Serif JP", serif' },
+        latin: { family: "Georgia, serif", scale: 0.92 },
+      }}
+    >
+      {"stone_engineは、日本語の文字組版を実現する、テキストレンダリングエンジンである。"}
+    </StoneText>
+  );
+}
+```
 
-たとえば、現状ではフォントのGSUBテーブルを辿るために、C言語を用いている。
-これはそれが実行速度を高めるよりよい方法と考えているからである。
+縦書きは `direction="tbRl"` を指定し、折り返しの基準になる高さを与えます。
 
-## 提供クラス
+```tsx
+<StoneText direction="tbRl" height={480} fontSize={20} lineHeightScale={2}>
+  {text}
+</StoneText>
 
-stone_engineは、`STLabel`と`STTextView`というクラスを提供する。これは、UIKitにおけるUILabelとUITextViewを置き換えることを意図している。
+{/* コンテナの高さに合わせる場合 */}
+<StoneText direction="tbRl" height="container" style={{ height: "60vh" }}>
+  {text}
+</StoneText>
+```
 
-## STLabel
+### SSR（React Router / Next.js など）
 
-STLabelは、画面にテキストを表示するためのビュークラスである。編集はできない。次のような特徴を有する。
+コンポーネントはサーバーでは通常のテキスト（`<p>`、縦書きなら `writing-mode: vertical-rl`）を描画し、クライアントでフォントの計測ができた時点で組版結果の SVG に置き換わります。ハイドレーションの不一致は起きません。フォントが未読み込みなら `document.fonts.load()` で読み込み、完了後に自動的にレイアウトし直します。
 
-### 文字描画方向の指定
+`fallback` プロパティで置き換わる前の表示を選べます。
 
-文字を描画する方向として、`LrTb`または`TbRl`を指定できる。TbRlは、いわゆる縦書き表示である。
+- `"text"`（既定）: 通常のテキストとして表示する。SEO / アクセシビリティ的に有利
+- `"hidden"`: 場所だけ確保して見せない
+- `"none"`: 何も描かない
 
-| <img width="480" src="https://github.com/user-attachments/assets/bc779d89-a96a-4235-80b5-332cc18e1f8a"> |
-|:--:|
-| `LrTb`（横書き表示） |
+組版後も、スクリーンリーダーと検索エンジンのために元のテキストを視覚的に隠した要素として保持し、SVG は `aria-hidden` にしています。
 
-| <img width="240" src="https://github.com/user-attachments/assets/dc5979e9-dd17-4b9e-9da6-8a8156f899bf"> |
-|:--:|
-| `TbRl`（縦書き表示） |
+### プロパティ
 
-### 縦書き表示
+| プロパティ | 既定値 | 説明 |
+| --- | --- | --- |
+| `text` / `children` | | 組むテキスト |
+| `direction` | `"lrTb"` | `"lrTb"` 横書き、`"tbRl"` 縦書き |
+| `fontSize` | `17` | フォントサイズ（px） |
+| `lineHeightScale` | `1` | 行送り（フォントサイズに対する倍率） |
+| `textAlign` | `"leading"` | `leading` / `center` / `trailing` / `justify` |
+| `directionAlign` | `"start"` | 行送り方向の寄せ（横書きなら上下、縦書きなら左右） |
+| `punctuationMode` | `"stone"` | 約物の扱い。`whole` 常に全角、`half` 常に半角、`stone` 前後関係で判断 |
+| `kinsoku` | `true` | 行頭・行末禁則 |
+| `dividesByWords` | `true` | 単語の途中で改行しない |
+| `allowsTateChuYoko` | `true` | 縦書きで 2 桁以下の数字を正体にする |
+| `adjustsFontSizeToFitWidth` / `minimumScaleFactor` | `false` / `0` | 収まらないときにフォントを縮小する |
+| `fonts` | | 文字種（`latin` / `japanese` / `emoji`）ごとの `{ family, scale, weight, style, ascent, descent }` |
+| `width` / `height` | `"container"` / `"auto"` | レイアウト領域。数値（px）、`"auto"`（制限なし）、`"container"`（コンポーネントの大きさ） |
+| `color` | `currentColor` | 文字色 |
+| `showFrames` | `false` | 各文字の占有矩形を描く（デバッグ用） |
+| `fallback` | `"text"` | レイアウト前の表示 |
+| `onLayout` | | レイアウト結果（`StoneContext`）を受け取る |
 
-縦書き表示では、フォントを描画するときに適切なグリフが選択される。たとえば、句読点、括弧などに適用される。
+`fonts` の既定値は、和文がヒラギノ角ゴ → Noto Sans JP → 游ゴシック、欧文が Helvetica Neue（スケール 0.95）です。和文フォントのアセント／ディセントは仮想ボディに合わせて 0.88 / 0.12 を使い、欧文はブラウザが返すフォントメトリクスを使います。フォントによって上下位置を調整したい場合は `ascent` / `descent` で上書きできます。
 
-数字を表示するときは、いわゆる縦中横が反映される。数字が2桁以下のときは、正体で表示される。2桁より大きいとは、90度回転して表示される。
+### レイアウト結果を使う
 
-アルファベットは、90度回転して表示される。
+`onLayout` または `useStoneLayout` フックで `StoneContext` が得られます。Swift 版の `STContext` に相当し、文字ごとの `runs`（`char`、`position`、`frame`、`line`、`tokenId` …）と `tokens`、`lineCount`、`renderedSize`、当たり判定の `hitRunIndex(point)` / `closestRunIndex(point)` などを持ちます。
 
-| <img width="60" src="https://github.com/user-attachments/assets/47a5b36a-cbfe-435c-8910-27042b73e6de"> |
-|:--:|
-| 数字の縦中横表示と、アルファベットの90度回転表示 |
+```tsx
+import { useRef } from "react";
+import { useStoneLayout, StoneSVG } from "@non-standardworld/stone-engine/react";
 
+function Custom({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const layout = useStoneLayout({ text, options: { fontSize: 24 }, containerRef: ref });
+  return (
+    <div ref={ref}>
+      {layout && <StoneSVG layout={layout} />}
+      {layout?.runs.map((run, i) => (
+        <span key={i} style={{ position: "absolute", left: run.frame.x, top: run.frame.y }} />
+      ))}
+    </div>
+  );
+}
+```
 
-### 禁則処理
+## React 以外で使う
 
-禁則処理は、行頭禁則および行禁則が行われる。禁則の対象となる文字種を指定可能である。
+```ts
+import { mountStoneText } from "@non-standardworld/stone-engine";
 
-禁則処理の、オン／オフを指定することが可能である。
+const handle = mountStoneText(document.querySelector("#text")!, {
+  text: "縦書きのテキスト",
+  direction: "tbRl",
+  height: 400,
+});
+handle.update({ fontSize: 24 });
+handle.destroy();
+```
 
-### 約物半角
+さらに低いレベルでは、`layoutText()` に計測器（ブラウザなら `getSharedCanvasMeasurer()`）を渡して `StoneContext` を受け取り、`svgString()` で SVG 文字列にできます。計測器は `FontMeasurer` インターフェースなので、opentype.js などでフォントファイルから計測する実装に差し替えれば、サーバー側で組版して SVG を SSR することもできます。
 
-約物（句読点や括弧類）を、半角で表示させることができる。約物の取り扱い方を、以下のモードで指定することができる。
+```ts
+import { layoutText, svgString, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine";
 
-- 常に全角
-- 常に半角
-- 前後の文字種や行中の位置で、適切に判断する（stoneモード）
+const layout = layoutText(text, { direction: "tbRl", fontSize: 20 }, getSharedCanvasMeasurer()!, { height: 400 });
+element.innerHTML = svgString(layout);
+```
 
-| <img width="640" src="https://github.com/user-attachments/assets/8cd0b639-976c-4091-8dc3-d08f2fb480b4"> |
-|:--:|
-| 常に全角 |
+## Swift 版との違い
 
-| <img width="640" src="https://github.com/user-attachments/assets/4467fd22-75e7-4038-b852-20612f462edf"> |
-|:--:|
-| 常に半角 |
+- 編集機能（`STTextView`、カーソル、選択、ルーペ）は移植していません。表示（`STLabel`）に相当する機能のみです。
+- フォントは名前の配列ではなく CSS の `font-family` リストで指定します。グリフ単位のフォールバックはブラウザが行います。
+- 縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの `font-feature-settings` に任せています。
+- `Intl.Segmenter` が無い環境では単語分割が書記素分割にフォールバックします（`dividesByWords: false` 相当）。
+- 元実装の明らかな不具合をいくつか修正しています（禁則の追い出し単位、行頭約物の二重詰め、均等配置の余り、縦書き均等配置での 1 桁縦中横、`directionAlign: middle` のずれ）。詳細は `src/layout.ts` 冒頭のコメントを参照してください。
 
-| <img width="640" src="https://github.com/user-attachments/assets/b82a28f8-58cc-43eb-9c2d-3b34eed3006c"> |
-|:--:|
-| stoneモード |
+## 開発
 
-### フォントの指定
+```bash
+npm install          # 依存の取得とビルド
+npm test             # ユニットテスト（vitest）
+npm run build        # dist/ を生成
+npm run example      # examples/react-router のデモを起動
+```
 
-STLabelでは、文字種ごとにフォントを指定することが可能である。
+`examples/react-router` は React Router（framework mode、SSR 有効）でこのパッケージを使う最小構成です。
 
-| <img width="640" src="https://github.com/user-attachments/assets/efad8041-4e26-4165-acca-13feb3b6d3b8"> |
-|:--:|
-| 日本語フォント：游明朝<br>ラテン文字フォント：Times New Roman |
+## ライセンス
 
-| <img width="640" src="https://github.com/user-attachments/assets/a19c165a-bde1-4cd4-9943-7666c26f85c6"> |
-|:--:|
-| 日本語フォント：游ゴシック<br>ラテン文字フォント：Helvetica |
-
-指定可能な文字種は、Unicodeカテゴリとして定義される。
-
-### 文字種ごとのスケーリング
-
-STLabelでは、文字種ごとに表示するスケールを指定することが可能である。たとえば、日本語フォントとして1.0、ラテン文字フォントとして0.9を指定すると、次のような描画になる。
-
-| <img width="480" src="https://github.com/user-attachments/assets/39372f77-960c-4d41-90f5-528da494a730"> |
-|:--:|
-| 日本語フォントスケール：1.0<br>ラテン文字フォントスケール：0.9 |
-
-### 文字寄せ
-
-文字寄せとして、以下が指定可能である。
-
-- 行頭
-- 中央
-- 行末
-- 均等
-
-### 単語分割
-
-日本語単語分割のオン／オフを指定することができる。これは、改行を行うときに単語を分割するか、しないかを決定するものである。
-
-
-## STTextView
-
-STTextViewは、テキストの編集を行うためのビュークラスである。STLabelが持つ特徴をすべて有する。
-
+MIT License。オリジナルの著作権は Nihon Design Center に帰属します。[LICENSE](./LICENSE) を参照してください。

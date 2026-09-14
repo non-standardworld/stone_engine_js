@@ -2,3 +2,10 @@ stone.xcodeproj/project.xcworkspace/xcuserdata
 stone.xcodeproj/xcuserdata
 .DS_Store
 .build
+
+# JavaScript
+node_modules/
+dist/
+*.tsbuildinfo
+examples/*/build/
+examples/*/.react-router/

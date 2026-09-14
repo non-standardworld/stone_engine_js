@@ -1,0 +1,167 @@
+:root {
+  color-scheme: light;
+  --ink: #1d1d1f;
+  --paper: #fbfaf7;
+  --line: #d9d5cc;
+  --accent: #b8452f;
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+}
+
+.hero {
+  display: flex;
+  gap: 32px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 32px;
+  margin-bottom: 32px;
+}
+
+.hero__vertical {
+  flex: 0 0 auto;
+  height: 360px;
+}
+
+.hero__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hero h1 {
+  font-size: 28px;
+  margin: 0 0 12px;
+  letter-spacing: 0.04em;
+}
+
+.hero p {
+  margin: 0 0 8px;
+  color: #444;
+}
+
+.playground {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 28px;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.controls textarea {
+  width: 100%;
+  min-height: 160px;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  resize: vertical;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.controls label.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.controls select,
+.controls input[type="range"] {
+  width: 100%;
+}
+
+.controls .row {
+  display: flex;
+  gap: 12px;
+}
+
+.controls .row > label {
+  flex: 1;
+}
+
+.controls .value {
+  color: #777;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage {
+  min-width: 0;
+}
+
+.stage__frame {
+  border: 1px dashed var(--line);
+  background: #fff;
+  padding: 24px;
+  overflow: auto;
+}
+
+.stage__frame[data-direction="tbRl"] {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.stage__frame .stone-text {
+  outline: 1px solid rgba(184, 69, 47, 0.25);
+}
+
+.stage__info {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #666;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stage__info code {
+  background: #eee9dd;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.stone-text svg text {
+  cursor: default;
+}
+
+.stone-text svg text:hover {
+  fill: var(--accent);
+}
+
+.error {
+  padding: 40px;
+}
+
+@media (max-width: 800px) {
+  .hero {
+    flex-direction: column;
+  }
+  .playground {
+    grid-template-columns: 1fr;
+  }
+}

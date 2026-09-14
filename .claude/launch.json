@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "example-react-router",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "examples/react-router", "--", "--port", "5173", "--host", "127.0.0.1"],
+      "port": 5173
+    }
+  ]
+}

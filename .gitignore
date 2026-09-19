@@ -9,3 +9,4 @@ dist/
 *.tsbuildinfo
 examples/*/build/
 examples/*/.react-router/
+site/dist/

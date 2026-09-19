@@ -3,6 +3,8 @@
 日本語組版エンジン [stone_engine](https://github.com/ndc-stone/stone_engine)（Nihon Design Center、iOS / Swift 製）の JavaScript / TypeScript 移植です。
 縦書き、禁則処理、約物の半角詰め、縦中横、文字種ごとのフォントとスケール指定といったエンジンの機能を、ブラウザ標準のフォント描画の上で再現します。React 用のコンポーネントと、フレームワークを使わない DOM 用 API を同梱しています。
 
+ライブサンプル付きのドキュメントサイト: https://non-standardworld.github.io/stone_engine_js/
+
 オリジナル（Swift 版）の設計思想と機能説明は [README.original.md](./README.original.md) を参照してください。Swift のソースは `Sources/` にそのまま残しています。
 
 ## 仕組み
@@ -87,7 +89,7 @@ export function Article() {
 | `allowsTateChuYoko` | `true` | 縦書きで 2 桁以下の数字を正体にする |
 | `adjustsFontSizeToFitWidth` / `minimumScaleFactor` | `false` / `0` | 収まらないときにフォントを縮小する |
 | `fonts` | | 文字種（`latin` / `japanese` / `emoji`）ごとの `{ family, scale, weight, style, ascent, descent }` |
-| `width` / `height` | `"container"` / `"auto"` | レイアウト領域。数値（px）、`"auto"`（制限なし）、`"container"`（コンポーネントの大きさ） |
+| `width` / `height` | 横書き `"container"` / `"auto"`、縦書き `"auto"` / `"auto"` | レイアウト領域。数値（px）、`"auto"`（制限なし）、`"container"`（コンポーネントの大きさ） |
 | `color` | `currentColor` | 文字色 |
 | `showFrames` | `false` | 各文字の占有矩形を描く（デバッグ用） |
 | `fallback` | `"text"` | レイアウト前の表示 |
@@ -158,6 +160,8 @@ npm run example      # examples/react-router のデモを起動
 ```
 
 `examples/react-router` は React Router（framework mode、SSR 有効）でこのパッケージを使う最小構成です。
+
+`site/` はドキュメントサイト（Vite + React）で、`npm run site` で開発サーバーが起動します。`main` に push すると GitHub Actions（`.github/workflows/pages.yml`）が GitHub Pages にデプロイします。
 
 ## ライセンス
 

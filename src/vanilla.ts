@@ -9,7 +9,7 @@ import type { FontMeasurer, Size, StoneOptions } from "./types.js";
 
 export interface MountOptions extends StoneOptions {
   text: string;
-  /** 既定 "container"。 */
+  /** 既定: 横書きは "container"、縦書きは "auto"。 */
   width?: SizeSpec;
   /** 既定 "auto"。縦書きで折り返すには数値か "container"（コンテナに高さを与える）を指定する。 */
   height?: SizeSpec;

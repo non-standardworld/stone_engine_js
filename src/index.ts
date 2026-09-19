@@ -42,6 +42,7 @@ export {
   VERTICAL_FEATURE_SETTINGS,
   glyphElements,
   glyphGroups,
+  isSafeSvgAttributeName,
   svgOverflow,
   svgSize,
   svgString,

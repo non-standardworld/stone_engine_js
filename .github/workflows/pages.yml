@@ -5,10 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 書き込み権限は deploy job にだけ与える（build job は依存関係のコードを実行するため）
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -17,8 +16,13 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,9 +31,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build --workspace site
+      # リポジトリ設定で Pages の公開元を「GitHub Actions」にしておくこと
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist
@@ -37,6 +40,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -64,7 +64,7 @@ export const SSR = `// サーバーでは通常のテキスト（縦書きなら
 // クライアントでフォントを計測できた時点で組版結果の SVG に置き換わる。
 <StoneText fallback="text">{text}</StoneText>   // 既定。SEO / アクセシビリティに有利
 <StoneText fallback="hidden">{text}</StoneText> // 場所だけ確保して見せない
-<StoneText fallback="none">{text}</StoneText>   // 何も描かない`;
+<StoneText fallback="none">{text}</StoneText>   // 視覚表示をせず、スクリーンリーダー用テキストだけを残す`;
 
 export const HOOK = `import { useRef } from "react";
 import { useStoneLayout, StoneSVG } from "@non-standardworld/stone-engine/react";
@@ -128,6 +128,6 @@ export const PROPS: PropRow[] = [
   { name: "width / height", def: '横書き "container" / "auto"、縦書き "auto" / "auto"', desc: 'レイアウト領域。数値（px）、"auto"（制限なし）、"container"（コンポーネントの大きさ）。縦書きの幅は内容に合わせて左に伸びる' },
   { name: "color", def: "currentColor", desc: "文字色" },
   { name: "showFrames", def: "false", desc: "各文字の占有矩形を描く（デバッグ用）" },
-  { name: "fallback", def: '"text"', desc: "レイアウト前（SSR・フォント読み込み前）の表示。text / hidden / none" },
+  { name: "fallback", def: '"text"', desc: "レイアウト前（SSR・フォント読み込み前）の表示。text 通常のテキスト、hidden 場所だけ確保、none 視覚表示なし（スクリーンリーダー用テキストは残る）" },
   { name: "onLayout", def: "", desc: "レイアウト結果（StoneContext）を受け取る" },
 ];

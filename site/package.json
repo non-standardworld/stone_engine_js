@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@non-standardworld/stone-engine": "file:../..",
+    "@non-standardworld/stone-engine": "file:..",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

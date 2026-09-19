@@ -32,7 +32,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "example": "npm run dev --workspace examples/react-router",
     "site": "npm run dev --workspace site",
-    "site:build": "npm run build --workspace site"
+    "site:build": "npm run build --workspace site",
+    "site:preview": "npm run build --workspace site && npm run preview --workspace site -- --port 4173 --host 127.0.0.1 --strictPort"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

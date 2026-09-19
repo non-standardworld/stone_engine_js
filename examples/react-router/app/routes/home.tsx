@@ -61,6 +61,7 @@ export default function Home() {
   const [layout, setLayout] = useState<StoneContext | null>(null);
   const onLayout = useCallback((ctx: StoneContext) => {
     setLayout(ctx);
+    setPicked(null); // 前のレイアウトの選択情報は捨てる
     setInfo({
       lines: ctx.lineCount,
       width: Math.round(ctx.renderedSize.width),

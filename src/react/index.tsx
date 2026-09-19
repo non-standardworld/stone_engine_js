@@ -209,7 +209,8 @@ export interface StoneTextProps extends StoneOptions {
   showFrames?: boolean;
   /**
    * レイアウトできるまで（SSR 中・フォント読み込み前）の表示。
-   * "text": 通常のテキストとして表示（既定）、"hidden": 場所は確保するが見せない、"none": 何も描かない。
+   * "text": 通常のテキストとして表示（既定）、"hidden": 場所は確保するが見せない、
+   * "none": 視覚的には何も描かず、スクリーンリーダー用のテキストだけを残す。
    */
   fallback?: "text" | "hidden" | "none";
   onLayout?: (layout: StoneContext) => void;

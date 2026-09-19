@@ -67,7 +67,7 @@ function useContainerSize(ref: RefObject<HTMLElement | null>, enabled: boolean):
 export interface UseStoneLayoutArgs {
   text: string;
   options?: StoneOptions;
-  /** 既定 "container"（containerRef の幅）。 */
+  /** 既定: 横書きは "container"（containerRef の幅）、縦書きは "auto"（内容に合わせて伸びる）。 */
   width?: SizeSpec;
   /** 既定 "auto"。縦書きで折り返すには数値か "container" を指定する。 */
   height?: SizeSpec;
@@ -84,7 +84,8 @@ export function useStoneLayout(args: UseStoneLayoutArgs): StoneContext | null {
   const { text, options = {}, width, height, containerRef, measurer } = args;
   const key = optionsKey(options);
   const stableOptions = useMemo(() => options, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const needsContainer = (width ?? "container") === "container" || height === "container";
+  const defaultWidth = (stableOptions.direction ?? "lrTb") === "tbRl" ? "auto" : "container";
+  const needsContainer = (width ?? defaultWidth) === "container" || height === "container";
   const fallbackRef = useRef<HTMLElement | null>(null);
   const containerSize = useContainerSize(containerRef ?? fallbackRef, needsContainer);
   const [layout, setLayout] = useState<StoneContext | null>(null);
@@ -196,7 +197,7 @@ export interface StoneTextProps extends StoneOptions {
   /** 組むテキスト。children に文字列を渡してもよい。 */
   text?: string;
   children?: ReactNode;
-  /** 既定 "container"（コンポーネントの幅）。 */
+  /** 既定: 横書きは "container"（コンポーネントの幅）、縦書きは "auto"（内容に合わせて左に伸びる）。 */
   width?: SizeSpec;
   /** 既定 "auto"。縦書きで折り返すには数値か "container"（style で高さを与える）を指定する。 */
   height?: SizeSpec;
@@ -208,7 +209,8 @@ export interface StoneTextProps extends StoneOptions {
   showFrames?: boolean;
   /**
    * レイアウトできるまで（SSR 中・フォント読み込み前）の表示。
-   * "text": 通常のテキストとして表示（既定）、"hidden": 場所は確保するが見せない、"none": 何も描かない。
+   * "text": 通常のテキストとして表示（既定）、"hidden": 場所は確保するが見せない、
+   * "none": 視覚的には何も描かず、スクリーンリーダー用のテキストだけを残す。
    */
   fallback?: "text" | "hidden" | "none";
   onLayout?: (layout: StoneContext) => void;

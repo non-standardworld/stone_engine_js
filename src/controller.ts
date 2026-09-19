@@ -30,15 +30,16 @@ export interface ControllerOptions {
 
 /**
  * レイアウト領域を決める。"container" が必要なのにまだ計測できていなければ null。
- * 既定値: 幅は "container"、高さは "auto"。縦書きで折り返したいときは高さを指定する。
+ * 既定値: 横書きは幅 "container"・高さ "auto"、縦書きは幅 "auto"・高さ "auto"。
+ * 縦書きで折り返したいときは高さを指定する。幅は内容に合わせて左に伸びる。
  */
 export function resolveLayoutSize(
-  _direction: Direction,
+  direction: Direction,
   width: SizeSpec | undefined,
   height: SizeSpec | undefined,
   container: Size | null,
 ): LayoutSize | null {
-  const w = width ?? "container";
+  const w = width ?? (direction === "tbRl" ? "auto" : "container");
   const h = height ?? "auto";
   const resolve = (spec: SizeSpec, measured: number | null): number | undefined | typeof PENDING => {
     if (spec === "auto") return undefined;

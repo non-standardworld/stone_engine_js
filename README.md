@@ -81,7 +81,7 @@ export function Article() {
 | `direction` | `"lrTb"` | `"lrTb"` 横書き、`"tbRl"` 縦書き |
 | `fontSize` | `17` | フォントサイズ（px） |
 | `lineHeightScale` | `1` | 行送り（フォントサイズに対する倍率） |
-| `textAlign` | `"leading"` | `leading` / `center` / `trailing` / `justify` |
+| `textAlign` | `"leading"` | `leading` / `center` / `trailing` / `justify`。`justify` は最終行と改行で終わる行を除いて行末をそろえる。余白は文字間に均等に配り、欧文の単語の途中は空けない |
 | `directionAlign` | `"start"` | 行送り方向の寄せ（横書きなら上下、縦書きなら左右） |
 | `punctuationMode` | `"stone"` | 約物の扱い。`whole` 常に全角、`half` 常に半角、`stone` 前後関係で判断 |
 | `kinsoku` | `true` | 行頭・行末禁則 |
@@ -149,6 +149,7 @@ element.innerHTML = svgString(layout);
 - 縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの `font-feature-settings` に任せています。
 - `Intl.Segmenter` が無い環境では単語分割が書記素分割にフォールバックします（`dividesByWords: false` 相当）。
 - 元実装の明らかな不具合をいくつか修正しています（禁則の追い出し単位、行頭約物の二重詰め、均等配置の余り、縦書き均等配置での 1 桁縦中横、`directionAlign: middle` のずれ）。詳細は `src/layout.ts` 冒頭のコメントを参照してください。
+- 均等配置（`textAlign: "justify"`）の余白は、トークン（単語）間ではなく文字間に配ります。元実装のようにトークン間にだけ配ると、`dividesByWords` が有効なときに文節ごとに大きな空きができて日本語の本文としては不自然になるためです。欧文の単語の途中（空白を挟まない欧文どうし）と縦中横の途中は空けず、行末の空白は幅 0 にして除きます。
 
 ## 開発
 

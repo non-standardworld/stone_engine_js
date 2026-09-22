@@ -4,7 +4,9 @@ layout.ts — 行分割・禁則・約物処理・縦中横・文字寄せを行
 Swift 版との意図的な差異（いずれも元実装の明らかな不具合の修正）:
 - 禁則の追い出しは「行末 run を含むトークンの直前」まで戻す（元実装は 1 つ前の run のトークン長だけ戻すため単語が割れることがある）。
 - 行頭の「 などを半角にする処理は行末 run まで含めて位置をずらし、前行末との約物処理で既に半角になっている場合は二重に詰めない。
-- 均等配置はトークン間の隙間を (トークン数 - 1) で割り、frame 基準で並べ直す（元実装は行末が余り、行頭約物と重なることがあった）。
+- 均等配置は frame 基準で並べ直す（元実装は行末が余り、行頭約物と重なることがあった）。
+- 均等配置の余白はトークン間ではなく文字間に配る（欧文の単語の途中と縦中横の途中は空けない）。行末の空白は幅 0 にして除く。
+  （トークン間にだけ配ると、単語分割が有効なときに文節ごとの大きな空きになる。）
 - 縦書きの均等配置で 1 桁の縦中横トークンの後に送りが進まない問題を修正。
 - directionAlign = middle の横書きで、最初の行のアセント分だけずれる問題を修正。
 - renderedSize の高さは縮小後の行送りで計算する。
@@ -12,13 +14,20 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
 
 import type { StoneContext } from "./context.js";
 import { isNotEndingChar, isNotStartingChar } from "./punctuation.js";
-import type { Rect } from "./types.js";
+import type { Rect, Run } from "./types.js";
 
 const EPS = 1e-6;
 
 /** 矩形を平行移動した新しい矩形を返す。 */
 function shiftRect(rect: Rect, dx: number, dy: number): Rect {
   return { x: rect.x + dx, y: rect.y + dy, width: rect.width, height: rect.height };
+}
+
+const WHITESPACE_RE = /^\s+$/u;
+
+/** 改行以外の空白の run かどうか。 */
+function isSpaceRun(run: Run): boolean {
+  return !run.isNewline && WHITESPACE_RE.test(run.char);
 }
 
 export class Layouter {
@@ -392,6 +401,46 @@ export class Layouter {
   // Post layout (common)
   //--------------------------------------------------------------//
 
+  /** 行 [.., end) が均等配置の対象かどうか。最終行と、改行で終わる行は対象外。 */
+  private isJustifiedLine(end: number): boolean {
+    const runs = this.ctx.runs;
+    return this.ctx.textAlign === "justify" && end < runs.length && !runs[end - 1].isNewline;
+  }
+
+  /**
+   * 均等配置で prev と run の間を広げてよいかどうか。
+   * 欧文（latin）同士の間は単語の途中（"yori.so" や数字の桁のように空白を挟まない並び）なので広げない。
+   * 和文同士・和欧の境目・空白の前後は広げる。
+   */
+  private isJustifiableGap(prev: Run, run: Run): boolean {
+    if (isSpaceRun(prev) || isSpaceRun(run)) return true;
+    const fm = this.ctx.fontManager;
+    return !(fm.script(prev.fontId) === "latin" && fm.script(run.fontId) === "latin");
+  }
+
+  /** 縦書きの均等配置で prev と run の間を広げてよいかどうか。縦中横の途中（横に並ぶ数字の間）は広げない。 */
+  private isJustifiableGapTbRl(prev: Run, run: Run): boolean {
+    if (prev.tokenId === run.tokenId && this.ctx.isTateChuYoko(run)) return false;
+    return this.isJustifiableGap(prev, run);
+  }
+
+  /**
+   * 行末に連続する空白を幅 0（縦書きは高さ 0）にして寄せの計算から除き、空白を除いた行の終端（run ID + 1）を返す。
+   * ブラウザが行末の空白を行幅に含めないのと同じ扱い。幅を 0 にする（領域外へ押し出さない）ので、
+   * 行末の文字が updateVisibility で省略記号扱いになることはない。
+   */
+  private collapseTrailingSpaces(start: number, end: number): number {
+    const runs = this.ctx.runs;
+    const horizontal = this.ctx.direction === "lrTb";
+    let contentEnd = end;
+    while (contentEnd > start && isSpaceRun(runs[contentEnd - 1])) {
+      const run = runs[contentEnd - 1];
+      run.frame = horizontal ? { ...run.frame, width: 0 } : { ...run.frame, height: 0 };
+      contentEnd -= 1;
+    }
+    return contentEnd;
+  }
+
   private forEachLine(fn: (start: number, end: number) => void): void {
     const runs = this.ctx.runs;
     let line = 0;
@@ -478,16 +527,11 @@ export class Layouter {
     const W = ctx.renderSize.width;
     if (!Number.isFinite(W)) return;
 
+    const justified = this.isJustifiedLine(end);
+    const contentEnd = justified ? this.collapseTrailingSpaces(start, end) : end;
+
     let total = 0;
-    let tokenCount = 0;
-    let prevTokenId = -1;
-    for (let i = start; i < end; i++) {
-      total += runs[i].frame.width;
-      if (runs[i].tokenId !== prevTokenId) {
-        tokenCount += 1;
-        prevTokenId = runs[i].tokenId;
-      }
-    }
+    for (let i = start; i < end; i++) total += runs[i].frame.width;
     const diff = W - total;
 
     switch (ctx.textAlign) {
@@ -507,17 +551,17 @@ export class Layouter {
         break;
       case "justify": {
         // 最終行と、改行で終わる行は均等にしない
-        if (end >= runs.length) return;
-        if (runs[end - 1].isNewline) break;
-        if (tokenCount <= 1) break;
-        const gap = diff / (tokenCount - 1);
+        if (!justified) break;
+        // 余白は文字間（欧文の単語の途中を除く）に均等に配る。行末の空白（幅 0）の前には配らない
+        let gapCount = 0;
+        for (let i = start + 1; i < contentEnd; i++) {
+          if (this.isJustifiableGap(runs[i - 1], runs[i])) gapCount += 1;
+        }
+        if (gapCount === 0) break;
+        const gap = diff / gapCount;
         let x = runs[start].frame.x;
-        let prev = runs[start].tokenId;
         for (let i = start; i < end; i++) {
-          if (runs[i].tokenId !== prev) {
-            prev = runs[i].tokenId;
-            x += gap;
-          }
+          if (i > start && i < contentEnd && this.isJustifiableGap(runs[i - 1], runs[i])) x += gap;
           const dx = x - runs[i].frame.x;
           runs[i].position = { x: runs[i].position.x + dx, y: runs[i].position.y };
           runs[i].frame = shiftRect(runs[i].frame, dx, 0);
@@ -609,19 +653,16 @@ export class Layouter {
     const H = ctx.renderSize.height;
     if (!Number.isFinite(H)) return;
 
+    const justified = this.isJustifiedLine(end);
+    const contentEnd = justified ? this.collapseTrailingSpaces(start, end) : end;
+
     let total = 0;
-    let tokenCount = 0;
-    let prevTokenId = -1;
     for (let i = start; i < end; i++) {
       const run = runs[i];
       if (ctx.isTateChuYoko(run)) {
         if (run.tokenRunIndex === 0) total += run.frame.height;
       } else {
         total += run.frame.height;
-      }
-      if (run.tokenId !== prevTokenId) {
-        tokenCount += 1;
-        prevTokenId = run.tokenId;
       }
     }
     const diff = H - total;
@@ -642,18 +683,17 @@ export class Layouter {
         }
         break;
       case "justify": {
-        if (end >= runs.length) return;
-        if (runs[end - 1].isNewline) break;
-        if (tokenCount <= 1) break;
-        const gap = diff / (tokenCount - 1);
+        if (!justified) break;
+        let gapCount = 0;
+        for (let i = start + 1; i < contentEnd; i++) {
+          if (this.isJustifiableGapTbRl(runs[i - 1], runs[i])) gapCount += 1;
+        }
+        if (gapCount === 0) break;
+        const gap = diff / gapCount;
         let y = runs[start].frame.y;
-        let prev = runs[start].tokenId;
         for (let i = start; i < end; i++) {
           const run = runs[i];
-          if (run.tokenId !== prev) {
-            prev = run.tokenId;
-            y += gap;
-          }
+          if (i > start && i < contentEnd && this.isJustifiableGapTbRl(runs[i - 1], run)) y += gap;
           const dy = y - run.frame.y;
           run.position = { x: run.position.x, y: run.position.y + dy };
           run.frame = shiftRect(run.frame, 0, dy);

@@ -86,6 +86,27 @@ describe("layout tbRl", () => {
     expect(tcy.lineCount).toBe(1);
   });
 
+  it("spreads the slack between characters when dividing by words", () => {
+    const ctx = lay("日本語の組版です", { direction: "tbRl", dividesByWords: true, textAlign: "justify" }, { height: 45 });
+    expect(lines(ctx)).toEqual(["日本語の", "組版です"]);
+    const gap = 5 / 3;
+    expect(runOf(ctx, "本").run.frame.y).toBeCloseTo(10 + gap);
+    expect(runOf(ctx, "の").run.frame.y + runOf(ctx, "の").run.frame.height).toBeCloseTo(45);
+  });
+
+  it("keeps tate-chu-yoko digits together when justifying", () => {
+    // 東京(20) 12(10) 月(10) = 40、の は入らない
+    const ctx = lay("東京12月の空", { direction: "tbRl", dividesByWords: true, textAlign: "justify" }, { height: 45 });
+    expect(lines(ctx)).toEqual(["東京12月", "の空"]);
+    const gap = 5 / 3; // 東｜京、京｜12、12｜月 の 3 か所
+    const one = runOf(ctx, "1").run;
+    const two = runOf(ctx, "2").run;
+    expect(one.frame.y).toBeCloseTo(20 + gap * 2);
+    expect(two.frame.y).toBe(one.frame.y);
+    const month = runOf(ctx, "月").run;
+    expect(month.frame.y + month.frame.height).toBeCloseTo(45);
+  });
+
   it("renders vertical text as SVG with rotation and vert features", () => {
     const ctx = lay("あA", { direction: "tbRl" });
     const svg = svgString(ctx);

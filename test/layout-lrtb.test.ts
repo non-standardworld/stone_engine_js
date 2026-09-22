@@ -118,7 +118,7 @@ describe("alignment", () => {
     expect(trailing.runs[0].position.x).toBe(30);
   });
 
-  it("justifies all lines but the last, spreading tokens to the full width", () => {
+  it("justifies all lines but the last, spreading characters to the full width", () => {
     const ctx = lay("あいうえおか", { textAlign: "justify" }, { width: 45 });
     expect(lines(ctx)).toEqual(["あいうえ", "おか"]);
     const gap = 5 / 3;
@@ -126,6 +126,44 @@ describe("alignment", () => {
     expect(ctx.runs[3].frame.x + ctx.runs[3].frame.width).toBeCloseTo(45);
     expect(ctx.runs[3].position.x).toBeCloseTo(35);
     expect(ctx.runs[4].frame.x).toBe(0); // 最終行はそのまま
+  });
+
+  it("spreads the slack between characters, not between words, when dividing by words", () => {
+    const ctx = lay("日本語の組版です", { dividesByWords: true, textAlign: "justify" }, { width: 45 });
+    expect(lines(ctx)).toEqual(["日本語の", "組版です"]);
+    // 日本語｜の の 1 か所ではなく、日｜本｜語｜の の 3 か所に 5px を配る
+    const gap = 5 / 3;
+    expect(runOf(ctx, "本").run.frame.x).toBeCloseTo(10 + gap);
+    expect(runOf(ctx, "語").run.frame.x).toBeCloseTo(20 + gap * 2);
+    expect(runOf(ctx, "の").run.frame.x).toBeCloseTo(30 + gap * 3);
+    expect(runOf(ctx, "の").run.frame.x + runOf(ctx, "の").run.frame.width).toBeCloseTo(45);
+  });
+
+  it("does not open up the inside of a latin word", () => {
+    // あ(10) abc(5.225×3) い(10) = 35.675、う は入らない
+    const ctx = lay("あabcいうえおか", { textAlign: "justify", kinsoku: false }, { width: 40 });
+    expect(lines(ctx)).toEqual(["あabcい", "うえおか"]);
+    const a = runOf(ctx, "a").run;
+    const b = runOf(ctx, "b").run;
+    const c = runOf(ctx, "c").run;
+    const i = runOf(ctx, "い").run;
+    const gap = (40 - 35.675) / 2; // あ｜a と c｜い の 2 か所
+    expect(a.frame.x).toBeCloseTo(10 + gap);
+    expect(b.frame.x).toBeCloseTo(a.frame.x + a.frame.width);
+    expect(c.frame.x).toBeCloseTo(b.frame.x + b.frame.width);
+    expect(i.frame.x + i.frame.width).toBeCloseTo(40);
+  });
+
+  it("collapses a trailing space so the last glyph reaches the edge", () => {
+    // あ(10) い(10) 空白(3) = 23、う は入らない → 行末に空白が残る
+    const ctx = lay("あい うえおか", { textAlign: "justify" }, { width: 30 });
+    expect(lines(ctx)).toEqual(["あい ", "うえお", "か"]);
+    const i = runOf(ctx, "い").run;
+    expect(i.frame.x + i.frame.width).toBeCloseTo(30);
+    const space = runOf(ctx, " ").run;
+    expect(space.frame.width).toBe(0);
+    expect(space.frame.x).toBeCloseTo(30);
+    expect(ctx.runs.every((r) => r.visibility === "visible")).toBe(true);
   });
 
   it("does not justify a line that ends with a newline", () => {

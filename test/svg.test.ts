@@ -58,6 +58,27 @@ describe("SVG output", () => {
     expect(glyphElements(latin).map((el) => el.rotate)).toEqual([90, 90, 90, 0]);
   });
 
+  it("draws quotation marks in vertical Japanese text with the vertical glyphs of the full-width forms", () => {
+    // 和文フォントの「“」などはプロポーショナルな字形で vert の置き換え先がないので、fwid で全角にしてから vert を掛ける
+    const ctx = lay("あ“い”う", { direction: "tbRl" });
+    const svg = svgString(ctx);
+    expect(svg).not.toContain("rotate=");
+    expect(svg).toContain('<tspan font-family=');
+    expect(svg).toContain('style="font-feature-settings:&quot;fwid&quot; 1, &quot;vert&quot; 1, &quot;vrt2&quot; 1"');
+    const groups = glyphParagraphs(ctx)[0].groups;
+    expect(groups.map((g) => [g.glyphs.map((el) => el.text).join(""), g.fontId, g.vertical, g.fullWidth])).toEqual([
+      ["あ", 1, true, false],
+      ["“", 1, true, true],
+      ["い", 1, true, false],
+      ["”", 1, true, true],
+      ["う", 1, true, false],
+    ]);
+    // 横書きと、欧文の単語の引用符（縦書きで回転する）は全角にしない
+    expect(glyphElements(lay("あ“い”")).some((el) => el.fullWidth)).toBe(false);
+    const latin = lay("“Hi”", { direction: "tbRl" });
+    expect(glyphElements(latin).map((el) => [el.rotate, el.fullWidth])).toEqual([[90, false], [90, false], [90, false], [90, false]]);
+  });
+
   it("omits hidden characters and draws the ellipsis", () => {
     expect(paragraphTexts(lay("あいうえおかきくけこ", {}, { width: 55, height: 10 }))).toEqual(["あいうえ…"]);
     expect(

@@ -250,6 +250,7 @@ const SCRIPT_CATEGORIES: Record<Script, ReadonlySet<UnicodeCategory>> = {
  *   （「‖」は縦組み用グリフの「═」になる）。回転すると「‼」「⁉」が横倒しになり、「※」は欧文のスケール 0.95 で小さくなっていた。
  *   「‱」(U+2031) も正立だが、和文フォントにないので含めない（正立にすると、代替フォントの 1em より広いグリフが列の左端から
  *   描かれて隣の列に重なる）。
+ * 引用符「“」「”」「‘」「’」は欧文にも和文にも使うので含めず、前後の文字で決める（parser.ts の resolveQuotationMarkFonts）。
  */
 const JAPANESE_CODE_POINTS: ReadonlySet<number> = new Set([
   // ダーシ・リーダー

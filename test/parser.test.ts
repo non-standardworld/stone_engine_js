@@ -74,6 +74,25 @@ describe("parser", () => {
     }
   });
 
+  it("sets quotation marks in the font of the neighboring characters", async () => {
+    const { scriptOfChar, isFullWidthCodePoint } = await import("../src/index.js");
+    const fontsOf = (text: string) => parseText(text, true).runs.map((r) => `${r.char}${r.fontId}`).join(" ");
+    // 和文中は和文。始めの引用符は後ろ、終わりの引用符は前の文字で決める
+    expect(fontsOf("彼は“はい”と‘一言’")).toBe("彼1 は1 “1 は1 い1 ”1 と1 ‘1 一1 言1 ’1");
+    // 欧文の単語・アポストロフィは欧文（縦書きで今までどおり回転する）。和文中の「“OK”」も欧文
+    expect(fontsOf("“Hello” it’s")).toBe("“0 H0 e0 l0 l0 o0 ”0  0 i0 t0 ’0 s0");
+    expect(fontsOf("「“OK”」")).toBe("「1 “0 O0 K0 ”0 」1");
+    // 続く引用符は飛ばして決める。空白・改行・行頭／行末の隣は和文。引用符の後ろの改行はそのフォントを引き継ぐ
+    expect(fontsOf("“‘Hi’”あ“‘い’”")).toBe("“0 ‘0 H0 i0 ’0 ”0 あ1 “1 ‘1 い1 ’1 ”1");
+    expect(fontsOf("a “ b”\n")).toBe("a0  0 “1  0 b0 ”0 \n0");
+    expect(fontsOf("あ”\n“")).toBe("あ1 ”1 \n1 “1");
+    // 1 文字だけでは決まらないので、scriptOfChar は今までどおり null。FixedMeasurer はプロポーショナルな字形に近い半角で測る
+    for (const char of Array.from("“”‘’")) {
+      expect(scriptOfChar(char)).toBeNull();
+      expect(isFullWidthCodePoint(char.codePointAt(0)!)).toBe(false);
+    }
+  });
+
   it("gives newline runs the previous run's font", () => {
     const { runs } = parseText("あ\nA\n", false);
     expect(runs[1].fontId).toBe(1);

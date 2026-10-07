@@ -59,4 +59,8 @@ describe("StoneSVG", () => {
     expectSameSvg(lay("あいうえabcかきく", { direction: "tbRl" }, { width: 10, height: 56 }), true);
     expectSameSvg(lay("あいうえ1かき", { direction: "tbRl" }, { width: 10, height: 55 }));
   });
+
+  it("renders the full-width vertical glyphs of quotation marks the same way", () => {
+    expectSameSvg(lay("彼は“はい”と“OK”と言った", { direction: "tbRl" }, { height: 60 }));
+  });
 });

@@ -3,7 +3,7 @@ context.ts — レイアウトの設定と結果を保持するコンテキス�
 */
 
 import { FontManager, resolveFonts } from "./fonts.js";
-import { isBlankChar } from "./punctuation.js";
+import { isBlankChar, isQuotationMark } from "./punctuation.js";
 import type {
   Direction,
   DirectionAlign,
@@ -397,6 +397,14 @@ export class StoneContext {
   /** 縦書き時に縦組み用グリフ（vert）を使う run かどうか。 */
   usesVerticalGlyph(run: Run): boolean {
     return this.direction === "tbRl" && this.fontManager.script(run.fontId) === "japanese";
+  }
+
+  /**
+   * 全角の字形（fwid）で描く run かどうか。縦書きで和文として扱う引用符「“」「”」「‘」「’」は、和文フォントでは字幅の詰まった
+   * プロポーショナルな字形で縦組み用グリフがないため、全角の字形にして縦組み用グリフ（〝〟の形）で描く。送り幅は 1em になる。
+   */
+  usesFullWidthGlyph(run: Run): boolean {
+    return this.usesVerticalGlyph(run) && isQuotationMark(run.char);
   }
 
   //--------------------------------------------------------------//

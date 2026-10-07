@@ -28,6 +28,8 @@ export {
   isNotEndingChar,
   isNotStartingChar,
   isNumberChar,
+  isOpeningQuotationMark,
+  isQuotationMark,
   isSpaceChar,
   punctuationOf,
 } from "./punctuation.js";
@@ -43,7 +45,9 @@ export {
 export { CanvasMeasurer, getSharedCanvasMeasurer } from "./measure/canvas.js";
 export { FixedMeasurer, isFullWidthCodePoint, type FixedMeasurerOptions } from "./measure/fixed.js";
 export {
+  FULL_WIDTH_VERTICAL_FEATURE_SETTINGS,
   VERTICAL_FEATURE_SETTINGS,
+  fontFeatureSettingsOf,
   glyphElements,
   glyphGroups,
   glyphParagraphs,

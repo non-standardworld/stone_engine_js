@@ -52,4 +52,11 @@ describe("StoneSVG", () => {
   it("renders truncation and debug frames the same way", () => {
     expectSameSvg(lay("あいうえおかきくけこ", {}, { width: 55, height: 10 }), true);
   });
+
+  it("renders the ellipsis that replaces latin and tate-chu-yoko runs the same way", () => {
+    expectSameSvg(lay("abcdefghijklmnopq", {}, { width: 40, height: 10 }));
+    // 回転する欧文の run と縦中横の省略記号は、和文フォントの正立の「︙」を列の位置に描く
+    expectSameSvg(lay("あいうえabcかきく", { direction: "tbRl" }, { width: 10, height: 56 }), true);
+    expectSameSvg(lay("あいうえ1かき", { direction: "tbRl" }, { width: 10, height: 55 }));
+  });
 });

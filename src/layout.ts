@@ -20,10 +20,16 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
   大きく見積もられて切り詰められたままになり、縦書きでは列が左にずれた）。
 - 縦中横の中央寄せは行送り方向の寄せより前に行う（元実装は寄せた後に中央寄せするため、1em より広い 2 桁の縦中横が左端の列にあると
   領域の左にはみ出し、大きさを制限していなくても切り詰められた）。
+- 省略記号が置き換える文字より大きくて領域からはみ出すときは、収まるまで同じ行の手前の文字も隠す（CSS の text-overflow: ellipsis と同じ）。
+  横書きは置き換える run のフォントで「…」の送り幅を測り、縦書きは「︙」を 1em とする。行の最初の文字でも収まらなければそこに置く。
+  （元実装は置き換えた文字の位置にそのまま描くため、半角の欧文などを省略記号にすると、行末で最大 0.5em ほど領域からはみ出して切れた。）
+- 省略記号は run の矩形の先頭から描き、縦書きでは run の文字種にかかわらず和文フォントの正立の「︙」を列の 1em 四方に描く（render/svg.ts）。
+  （元実装は run のグリフの位置とフォントで描くため、回転する欧文の run では「︙」ごと 90 度回転して点が横に並び、
+  縦中横では縦中横の位置に欧文フォントで描いて、1 桁だと列の中央からずれた。）
 */
 
 import type { StoneContext } from "./context.js";
-import { isBlankChar, isNotEndingChar, isNotStartingChar, isSpaceChar } from "./punctuation.js";
+import { HORIZONTAL_ELLIPSIS, isBlankChar, isNotEndingChar, isNotStartingChar, isSpaceChar } from "./punctuation.js";
 import type { Rect, Run } from "./types.js";
 
 const EPS = 1e-6;
@@ -469,10 +475,34 @@ export class Layouter {
     return result;
   }
 
+  /** i から手前に見て最初の、改行・空白でない run の ID（縦中横ならその先頭）。無ければ -1。 */
+  private lastCharRunAtOrBefore(i: number): number {
+    const ctx = this.ctx;
+    const runs = ctx.runs;
+    while (i >= 0 && isBlankChar(runs[i].char)) i -= 1;
+    if (i >= 0 && ctx.isTateChuYoko(runs[i])) i = ctx.tokens[runs[i].tokenId].start;
+    return i;
+  }
+
+  /**
+   * run を省略記号にしたとき、省略記号が領域に収まるかどうか。省略記号は run の矩形の先頭から描く（render/svg.ts）。
+   * 横書きは run のフォントの「…」の送り幅、縦書きは「︙」を 1em として測る。
+   */
+  private fitsEllipsis(run: Run): boolean {
+    const ctx = this.ctx;
+    const size = ctx.adjustFontSize;
+    if (ctx.direction === "lrTb") {
+      const ellipsis = ctx.fontManager.advance(run.fontId, size, HORIZONTAL_ELLIPSIS);
+      return run.frame.x + ellipsis <= ctx.renderSize.width + EPS;
+    }
+    return run.frame.y + size <= ctx.renderSize.height + EPS;
+  }
+
   /**
    * 切り詰め。先頭の行から、領域に完全に収まる行だけを表示し、収まらない最初の行とそれ以降の行は隠す（一部だけ見える行も描かない）。
    * 隠れた run に文字（改行・空白以外）があれば、表示する最後の文字を省略記号にして、その後ろ（行末の改行・空白や空行）も隠す。
    * 縦中横の途中に当たったときは、その縦中横の先頭を省略記号にする。
+   * 省略記号が置き換える文字より大きくて領域からはみ出すときは、収まるまで同じ行の手前の文字も隠す（CSS の text-overflow: ellipsis と同じ）。
    */
   private updateVisibility(): void {
     const ctx = this.ctx;
@@ -495,10 +525,14 @@ export class Layouter {
     }
     if (!hidesText) return;
 
-    let last = end - 1;
-    while (last >= 0 && isBlankChar(runs[last].char)) last -= 1;
+    let last = this.lastCharRunAtOrBefore(end - 1);
     if (last < 0) return;
-    if (ctx.isTateChuYoko(runs[last])) last = ctx.tokens[runs[last].tokenId].start;
+    // 行の最初の文字でも収まらなければ、そこに置いたまま領域で切り取られる（CSS と同じ）
+    while (!this.fitsEllipsis(runs[last])) {
+      const prev = this.lastCharRunAtOrBefore(last - 1);
+      if (prev < 0 || runs[prev].line !== runs[last].line) break;
+      last = prev;
+    }
     runs[last].visibility = "ellipsis";
     for (let i = last + 1; i < end; i++) runs[i].visibility = "invisible";
   }

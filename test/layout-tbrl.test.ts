@@ -128,6 +128,24 @@ describe("truncation tbRl", () => {
     }
   });
 
+  it("hides rotated latin runs before the ellipsis until a 1em ellipsis fits", () => {
+    // 「b」（45.225〜50.45px）を「︙」（1em）にすると 55.225px で高さ 55 を越えるので、手前の「a」を省略記号にする
+    const ctx = lay("あいうえabcかきく", { direction: "tbRl" }, { width: 10, height: 55 });
+    expect(lines(ctx)).toEqual(["あいうえab", "cかきく"]);
+    expect(shown(ctx)).toBe("あいうえ…");
+    expect(runOf(ctx, "a").run.visibility).toBe("ellipsis");
+    // 高さ 56 なら「c」は収まらないが「b」は収まる
+    const taller = lay("あいうえabcかきく", { direction: "tbRl" }, { width: 10, height: 56 });
+    expect(lines(taller)).toEqual(["あいうえabc", "かきく"]);
+    expect(shown(taller)).toBe("あいうえa…");
+  });
+
+  it("keeps the ellipsis on a full-width character that ends at the edge", () => {
+    const ctx = lay("あいうえおかきくけこ", { direction: "tbRl" }, { width: 10, height: 50 });
+    expect(lines(ctx)[0]).toBe("あいうえお");
+    expect(shown(ctx)).toBe("あいうえ…");
+  });
+
   it("puts the ellipsis on the character before a newline", () => {
     const ctx = lay("あ\nい", { direction: "tbRl" }, { width: 10 });
     expect(ctx.runs.map((r) => r.visibility)).toEqual(["ellipsis", "invisible", "invisible"]);

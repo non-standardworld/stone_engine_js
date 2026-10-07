@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { glyphElements, glyphParagraphs, svgString, textOfRunRange, type StoneContext } from "../src/index.js";
-import { lay } from "./helpers.js";
+import { lay, runOf } from "./helpers.js";
 
 /** 段落ごとに、描画する文字列をつなげたもの。 */
 function paragraphTexts(ctx: StoneContext): string[] {
@@ -42,6 +42,41 @@ describe("SVG output", () => {
       paragraphTexts(lay("あいうえおかきくけこ", { direction: "tbRl" }, { width: 10, height: 55 })),
     ).toEqual(["あいうえ︙"]);
   });
+
+  it("draws the vertical ellipsis upright in the Japanese font at the column of a rotated latin run", () => {
+    // 回転する欧文の run と一緒に「︙」を回すと点が横に並ぶので、正立のまま和文フォントで列の位置に描く
+    const ctx = lay("あいうえabcかきく", { direction: "tbRl" }, { width: 10, height: 56 });
+    const b = runOf(ctx, "b");
+    expect(b.run.visibility).toBe("ellipsis");
+    expect(ctx.isClockwise(b.run)).toBe(true);
+    const svg = svgString(ctx);
+    expect(svg).not.toMatch(/rotate="90"[^>]*>︙/);
+    expect(svg).toContain(`<tspan x="0" y="54.03" data-run="${b.id}">︙</tspan>`); // 45.225 + 1em - ディセント 1.2
+    const group = glyphParagraphs(ctx)[0].groups.find((g) => g.glyphs.some((el) => el.runId === b.id));
+    expect(group).toMatchObject({ fontId: ctx.runs[0].fontId, fontSize: 10, vertical: true }); // 和文の「あ」と同じ
+    expect(group?.glyphs[0]).toMatchObject({ text: "︙", rotate: 0 });
+  });
+
+  it("draws the vertical ellipsis of a tate-chu-yoko at the column instead of the centered digit", () => {
+    // 1 桁の縦中横は列の中央に寄せてある（x = 2.39）が、「︙」は和文の文字と同じく列の左端から 1em 四方に描く
+    const ctx = lay("あいうえ1かき", { direction: "tbRl" }, { width: 10, height: 55 });
+    const one = runOf(ctx, "1");
+    expect(one.run.visibility).toBe("ellipsis");
+    expect(one.run.frame.x).toBeCloseTo(2.39, 2);
+    expect(svgString(ctx)).toContain(`<tspan x="0" y="48.8" data-run="${one.id}">︙</tspan>`);
+    // 和文の文字なら、その文字を描く位置のまま
+    const japanese = lay("あいうえおかきくけこ", { direction: "tbRl" }, { width: 10, height: 55 });
+    expect(svgString(japanese)).toContain('<tspan x="0" y="48.8" data-run="4">︙</tspan>');
+  });
+
+  it("draws the ellipsis from the start of the frame of a compressed opening bracket", () => {
+    // 半角にした「は原点を左にずらして描くが、省略記号は矩形の先頭から描く（前の文字に重ねない）
+    const ctx = lay("あ「\nい", { punctuationMode: "half" }, { height: 10 });
+    const open = runOf(ctx, "「");
+    expect(open.run.visibility).toBe("ellipsis");
+    expect(open.run.position.x).toBe(5);
+    expect(svgString(ctx)).toContain(`<tspan x="10" y="8.8" data-run="${open.id}">…</tspan>`);
+  });
 });
 
 describe("textOfRunRange", () => {
@@ -56,6 +91,13 @@ describe("textOfRunRange", () => {
     const ellipsis = ctx.runs.findIndex((run) => run.visibility === "ellipsis");
     expect(textOfRunRange(ctx, 0, ellipsis)).toBe("あいうえ");
     expect(textOfRunRange(ctx, 1, ellipsis + 1)).toBe("いうえおかきくけこ");
+  });
+
+  it("includes the characters hidden to make room for the ellipsis", () => {
+    const ctx = lay("abcdefghijklmnopq", {}, { width: 40, height: 10 });
+    const ellipsis = ctx.runs.findIndex((run) => run.visibility === "ellipsis");
+    expect(textOfRunRange(ctx, 0, ellipsis)).toBe("abcde");
+    expect(textOfRunRange(ctx, 0, ellipsis + 1)).toBe("abcdefghijklmnopq");
   });
 
   it("includes the newline and blank lines after the ellipsis", () => {

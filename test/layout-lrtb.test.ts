@@ -225,6 +225,40 @@ describe("truncation", () => {
     expect(shown(ctx)).toBe("あい…");
   });
 
+  it("hides characters before the ellipsis until it fits", () => {
+    // 「g」（31.35〜36.575px）を「…」（欧文フォントで 9.5px）にすると 40.85px で幅 40 を越えるので、手前の「f」を省略記号にする
+    const ctx = lay("abcdefghijklmnopq", {}, { width: 40, height: 10 });
+    expect(lines(ctx)[0]).toBe("abcdefg");
+    expect(shown(ctx)).toBe("abcde…");
+    const f = runOf(ctx, "f").run;
+    expect(f.visibility).toBe("ellipsis");
+    expect(f.frame.x + 9.5).toBeLessThanOrEqual(40);
+    expect(runOf(ctx, "g").run.visibility).toBe("invisible");
+    expect(ctx.isTruncated).toBe(true);
+  });
+
+  it("measures the ellipsis in the font of the character it replaces", () => {
+    // 「a」に欧文の「…」（9.5px）を置くと 49.5px ではみ出すので、手前の「え」に和文の「…」（10px）を置く
+    const ctx = lay("あいうえaかきく", {}, { width: 49, height: 10 });
+    expect(lines(ctx)[0]).toBe("あいうえa");
+    expect(shown(ctx)).toBe("あいう…");
+  });
+
+  it("keeps the ellipsis on a full-width character that ends at the edge", () => {
+    // 和文（全角）は「…」と同じ幅なので、行末ちょうどまで埋まっていても最後の文字を省略記号にする
+    const ctx = lay("あいうえおかきくけこ", {}, { width: 50, height: 10 });
+    expect(lines(ctx)[0]).toBe("あいうえお");
+    expect(shown(ctx)).toBe("あいうえ…");
+  });
+
+  it("keeps the ellipsis on the first character of the line when it does not fit anywhere", () => {
+    // 幅 8 には「…」（9.5px）が収まらないが、行の最初の文字に置いて領域で切り取る（CSS の text-overflow と同じ）
+    const ctx = lay("abc", {}, { width: 8, height: 10 });
+    expect(lines(ctx)).toEqual(["a", "b", "c"]);
+    expect(shown(ctx)).toBe("…");
+    expect(ctx.isTruncated).toBe(true);
+  });
+
   it("does not truncate when only blank lines overflow", () => {
     const ctx = lay("あいう\n\n", {}, { height: 10 });
     expect(shown(ctx)).toBe("あいう\n");

@@ -17,9 +17,11 @@ export {
   resolveFonts,
 } from "./fonts.js";
 export {
+  HORIZONTAL_ELLIPSIS,
   KINSOKU_HANGING,
   KINSOKU_NOT_ENDING,
   KINSOKU_NOT_STARTING,
+  VERTICAL_ELLIPSIS,
   isNewlineChar,
   isNotEndingChar,
   isNotStartingChar,
@@ -38,8 +40,6 @@ export {
 export { CanvasMeasurer, getSharedCanvasMeasurer } from "./measure/canvas.js";
 export { FixedMeasurer, isFullWidthCodePoint, type FixedMeasurerOptions } from "./measure/fixed.js";
 export {
-  HORIZONTAL_ELLIPSIS,
-  VERTICAL_ELLIPSIS,
   VERTICAL_FEATURE_SETTINGS,
   glyphElements,
   glyphGroups,

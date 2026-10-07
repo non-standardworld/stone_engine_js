@@ -42,6 +42,11 @@ export const KINSOKU_NOT_ENDING: ReadonlySet<string> = new Set(
 /** ぶら下げ対象文字。 */
 export const KINSOKU_HANGING: ReadonlySet<string> = new Set(Array.from("、。"));
 
+/** 横書きの省略記号 (U+2026)。 */
+export const HORIZONTAL_ELLIPSIS = "…";
+/** 縦書きの省略記号 (U+FE19 PRESENTATION FORM FOR VERTICAL HORIZONTAL ELLIPSIS)。 */
+export const VERTICAL_ELLIPSIS = "︙";
+
 /** 行頭禁則文字かどうか。 */
 export function isNotStartingChar(char: string): boolean {
   return KINSOKU_NOT_STARTING.has(firstCodePointString(char));

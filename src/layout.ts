@@ -26,11 +26,26 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
 - 省略記号は run の矩形の先頭から描き、縦書きでは run の文字種にかかわらず和文フォントの正立の「︙」を列の 1em 四方に描く（render/svg.ts）。
   （元実装は run のグリフの位置とフォントで描くため、回転する欧文の run では「︙」ごと 90 度回転して点が横に並び、
   縦中横では縦中横の位置に欧文フォントで描いて、1 桁だと列の中央からずれた。）
+- ダーシ「—」「―」とリーダー「‥」「…」は、前後の文字にかかわらず和文として扱う（unicode.ts）。和文フォントで組み、縦書きでは回転せずに
+  縦組み用グリフで列の中央に描く。欧文の単語の後ろ（"Hello…"）も同じ。
+  （元実装は一般句読点をどの文字種にも入れていないため欧文フォントで組み、縦書きでは 90 度回転して点が列の左寄りに並び、
+  横書きでも点がベースライン上に下がった。既定の欧文フォント（Helvetica Neue）では「——」も 2 本に切れた。）
+- 分離禁止文字（「—」「―」「‥」「…」「〳」「〴」「〵」）が続けて並んだ間では改行せず（kinsoku が有効なとき）、均等配置でも空けない。
+  並びが行の先頭から始まるか 1 行に収まらず、手前で改行しても分かれてしまうときは、そのまま分ける。
+  （元実装には分離禁止の処理がなく、「……」「——」が行をまたいで分かれた。欧文として扱っていた間は均等配置で空かなかったが、
+  和文にするとほかの和文と同じく空いてしまうため、あわせて扱う。）
 */
 
 import type { StoneContext } from "./context.js";
-import { HORIZONTAL_ELLIPSIS, isBlankChar, isNotEndingChar, isNotStartingChar, isSpaceChar } from "./punctuation.js";
-import type { Rect, Run } from "./types.js";
+import {
+  HORIZONTAL_ELLIPSIS,
+  isBlankChar,
+  isInseparablePair,
+  isNotEndingChar,
+  isNotStartingChar,
+  isSpaceChar,
+} from "./punctuation.js";
+import type { Rect, Run, Token } from "./types.js";
 
 const EPS = 1e-6;
 
@@ -359,7 +374,7 @@ export class Layouter {
   // Kinsoku
   //--------------------------------------------------------------//
 
-  /** 行末禁則・行頭禁則。行末をトークン単位で手前に戻す。 */
+  /** 行末禁則・行頭禁則・分離禁止。行末をトークン単位で手前に戻す。 */
   private processNotEndingAndStarting(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -388,8 +403,29 @@ export class Layouter {
         continue;
       }
 
+      // 分離禁止（「……」「——」の途中で改行しない）。並びが行の先頭から始まるか 1 行に収まらないときは、そのまま分ける
+      if (endRun && nextStartRun && isInseparablePair(endRun.char, nextStartRun.char)) {
+        const sequence = this.inseparableSequence(this.runId);
+        const lineLength = ctx.direction === "lrTb" ? this.maxX : this.maxY;
+        if (sequence.start > this.lineStartRunId && ctx.advanceOfToken(sequence) <= lineLength + EPS) {
+          this.runId = sequence.start;
+          decreaseRunId();
+          continue;
+        }
+      }
+
       break;
     }
+  }
+
+  /** runId と runId + 1 の run を含む、分離禁止文字の並び（「……」など）の範囲。 */
+  private inseparableSequence(runId: number): Token {
+    const runs = this.ctx.runs;
+    let start = runId;
+    while (start > 0 && isInseparablePair(runs[start - 1].char, runs[start].char)) start -= 1;
+    let end = runId + 2;
+    while (end < runs.length && isInseparablePair(runs[end - 1].char, runs[end].char)) end += 1;
+    return { start, end };
   }
 
   //--------------------------------------------------------------//
@@ -405,10 +441,12 @@ export class Layouter {
   /**
    * 均等配置で prev と run の間を広げてよいかどうか。
    * 欧文（latin）同士の間は単語の途中（"yori.so" や数字の桁のように空白を挟まない並び）なので広げない。
+   * 分離禁止文字の間（「……」「——」）も、点や線がつながって見えるように広げない。
    * 和文同士・和欧の境目・空白の前後は広げる。
    */
   private isJustifiableGap(prev: Run, run: Run): boolean {
     if (isSpaceRun(prev) || isSpaceRun(run)) return true;
+    if (isInseparablePair(prev.char, run.char)) return false;
     const fm = this.ctx.fontManager;
     return !(fm.script(prev.fontId) === "latin" && fm.script(run.fontId) === "latin");
   }

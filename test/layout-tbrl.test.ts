@@ -59,6 +59,29 @@ describe("layout tbRl", () => {
     expect(one.frame.x).toBeGreaterThan(ctx.runs[0].frame.x - 1); // 列からはみ出さない
   });
 
+  it("sets dashes and leaders upright in the column like Japanese characters", () => {
+    // 欧文として回転すると、点が列の左寄り（欧文のベースライン側）に並び、「——」は 2 本に切れる
+    const ctx = lay("あ……い——う", { direction: "tbRl" });
+    ctx.runs.forEach((run, i) => {
+      expect(ctx.isClockwise(run)).toBe(false);
+      expect(ctx.usesVerticalGlyph(run)).toBe(true);
+      expect(run.frame).toEqual({ x: 0, y: i * 10, width: 10, height: 10 });
+      expect(run.position.x).toBe(0);
+      expect(run.position.y).toBeCloseTo(i * 10 + 8.8);
+    });
+    // 欧文の単語の後ろでも回転しない
+    const latin = lay("Hello…", { direction: "tbRl" });
+    expect(latin.isClockwise(runOf(latin, "o").run)).toBe(true);
+    expect(latin.isClockwise(runOf(latin, "…").run)).toBe(false);
+  });
+
+  it("does not break inside a run of leaders, dashes or kunojiten", () => {
+    for (const pair of ["……", "——", "〳〵"]) {
+      const ctx = lay(`あいうえ${pair}か`, { direction: "tbRl" }, { height: 50 });
+      expect(lines(ctx)).toEqual(["あいうえ", `${pair}か`]);
+    }
+  });
+
   it("can turn tate-chu-yoko off", () => {
     const ctx = lay("あ12", { direction: "tbRl", dividesByWords: true, allowsTateChuYoko: false });
     expect(ctx.isClockwise(runOf(ctx, "1").run)).toBe(true);

@@ -36,6 +36,16 @@ describe("SVG output", () => {
     expect(glyphParagraphs(ctx)[1].groups[0].glyphs[0].runId).toBe(2);
   });
 
+  it("draws vertical dashes and leaders upright with the vertical glyphs of the Japanese font", () => {
+    // 和文の文字と同じ <tspan>（vert）にまとまり、rotate を付けない
+    const ctx = lay("あ……い——う", { direction: "tbRl" });
+    expect(svgString(ctx)).not.toContain("rotate=");
+    const groups = glyphParagraphs(ctx)[0].groups;
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ fontId: 1, vertical: true });
+    expect(groups[0].glyphs.map((el) => el.text).join("")).toBe("あ……い——う");
+  });
+
   it("omits hidden characters and draws the ellipsis", () => {
     expect(paragraphTexts(lay("あいうえおかきくけこ", {}, { width: 55, height: 10 }))).toEqual(["あいうえ…"]);
     expect(

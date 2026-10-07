@@ -1,6 +1,7 @@
 /*
 unicode.ts — Unicode ブロックによる文字種判定。Swift 版 STObject.swift の STUnicodeCategory / STScript に対応。
 判定順序（先に一致したものを採用）も Swift 版の宣言順に合わせている。
+ただし一般句読点のダーシとリーダー（「—」「―」「‥」「…」）は、Swift 版と違って和文として扱う（JAPANESE_CODE_POINTS）。
 */
 
 import type { Script } from "./types.js";
@@ -238,6 +239,18 @@ const SCRIPT_CATEGORIES: Record<Script, ReadonlySet<UnicodeCategory>> = {
   ]),
 };
 
+/**
+ * ブロック（一般句読点）では文字種が決まらないが、和文として扱う文字。ダーシ「—」(U+2014)「―」(U+2015) と
+ * リーダー「‥」(U+2025)「…」(U+2026)。前後の文字にかかわらず和文フォントで組み、縦書きでは回転せずに縦組み用グリフで列の中央に描く。
+ * （Swift 版は欧文として扱うため、縦書きでは欧文フォントのまま 90 度回転し、点が列の左寄りに並んで「——」も切れていた。）
+ */
+const JAPANESE_CODE_POINTS: ReadonlySet<number> = new Set([0x2014, 0x2015, 0x2025, 0x2026]);
+
+/** ブロックによらず和文として扱う文字（「—」「―」「‥」「…」）かどうか。 */
+export function isJapanesePunctuationCodePoint(codePoint: number): boolean {
+  return JAPANESE_CODE_POINTS.has(codePoint);
+}
+
 const categoryCache = new Map<number, UnicodeCategory | null>();
 
 /** コードポイントの Unicode ブロック名。未知の場合は null。 */
@@ -257,6 +270,7 @@ export function unicodeCategoryOf(codePoint: number): UnicodeCategory | null {
 
 /** コードポイントの文字種。latin / japanese / emoji のいずれにも属さない場合は null。 */
 export function scriptOfCodePoint(codePoint: number): Script | null {
+  if (isJapanesePunctuationCodePoint(codePoint)) return "japanese";
   const category = unicodeCategoryOf(codePoint);
   if (category === null) return null;
   if (SCRIPT_CATEGORIES.latin.has(category)) return "latin";

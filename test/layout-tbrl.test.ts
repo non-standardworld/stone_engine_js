@@ -75,6 +75,28 @@ describe("layout tbRl", () => {
     expect(latin.isClockwise(runOf(latin, "…").run)).toBe(false);
   });
 
+  it("sets general punctuation such as ‼ and ※ upright in the column like CSS", () => {
+    // UTR #50 で正立（U）。欧文として回転すると「‼」「⁉」が横倒しになり、「※」は欧文のスケール 0.95 で小さくなる
+    const ctx = lay("あ‼い⁉う※え†‰", { direction: "tbRl" });
+    ctx.runs.forEach((run, i) => {
+      expect(ctx.isClockwise(run)).toBe(false);
+      expect(ctx.usesVerticalGlyph(run)).toBe(true);
+      expect(run.frame).toEqual({ x: 0, y: i * 10, width: 10, height: 10 });
+      expect(run.position.y).toBeCloseTo(i * 10 + 8.8);
+    });
+    // 欧文の単語の後ろでも回転しない。2 文字の「!?」は縦中横（2 桁以下の数字だけ）にならず、欧文として回転する
+    const latin = lay("Wow‼!?", { direction: "tbRl" });
+    expect(latin.isClockwise(runOf(latin, "w").run)).toBe(true);
+    expect(latin.isClockwise(runOf(latin, "‼").run)).toBe(false);
+    for (const char of ["!", "?"]) {
+      const { run } = runOf(latin, char);
+      expect(latin.isTateChuYoko(run)).toBe(false);
+      expect(latin.isClockwise(run)).toBe(true);
+    }
+    // 行頭禁則（「‼」を列の先頭にしない）
+    expect(lines(lay("あいうえお‼か", { direction: "tbRl" }, { height: 50 }))).toEqual(["あいうえ", "お‼か"]);
+  });
+
   it("does not break inside a run of leaders, dashes or kunojiten", () => {
     for (const pair of ["……", "——", "〳〵"]) {
       const ctx = lay(`あいうえ${pair}か`, { direction: "tbRl" }, { height: 50 });

@@ -56,6 +56,24 @@ describe("parser", () => {
     }
   });
 
+  it("treats general punctuation that stays upright in vertical text as Japanese", async () => {
+    const { scriptOfChar, isFullWidthCodePoint } = await import("../src/index.js");
+    // UTR #50 で正立（U）の一般句読点のうち JIS X 0213 にある文字。和文フォントで組む（縦書きで回転させない）
+    for (const char of Array.from("‖†‡‰※‼⁂⁇⁈⁉⁑")) {
+      expect(scriptOfChar(char)).toBe("japanese");
+      expect(fontIdForChar(char)).toBe(1);
+      expect(isFullWidthCodePoint(char.codePointAt(0)!)).toBe(true);
+    }
+    // 欧文の単語や数字の後ろでも和文
+    expect(parseText("Wow‼", true).runs.map((r) => r.fontId)).toEqual([0, 0, 0, 1]);
+    expect(parseText("5‰", true).runs.map((r) => r.fontId)).toEqual([0, 1]);
+    // 和文フォントにない「‱」と、UTR #50 で回転（R）のプライム「′」「″」は今までどおり欧文
+    for (const char of ["‱", "′", "″"]) {
+      expect(scriptOfChar(char)).toBeNull();
+      expect(fontIdForChar(char)).toBe(0);
+    }
+  });
+
   it("gives newline runs the previous run's font", () => {
     const { runs } = parseText("あ\nA\n", false);
     expect(runs[1].fontId).toBe(1);

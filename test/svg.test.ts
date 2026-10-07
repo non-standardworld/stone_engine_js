@@ -46,6 +46,18 @@ describe("SVG output", () => {
     expect(groups[0].glyphs.map((el) => el.text).join("")).toBe("あ……い——う");
   });
 
+  it("draws upright general punctuation such as ‼ and ※ in vertical text without rotating it", () => {
+    // 和文の文字と同じ <tspan>（vert、スケール 1）にまとまり、rotate を付けない
+    const ctx = lay("あ‼い※う", { direction: "tbRl" });
+    expect(svgString(ctx)).not.toContain("rotate=");
+    const groups = glyphParagraphs(ctx)[0].groups;
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ fontId: 1, vertical: true, fontSize: 10 });
+    // 欧文の単語の後ろでは、欧文だけを回転する
+    const latin = lay("Wow‼", { direction: "tbRl" });
+    expect(glyphElements(latin).map((el) => el.rotate)).toEqual([90, 90, 90, 0]);
+  });
+
   it("omits hidden characters and draws the ellipsis", () => {
     expect(paragraphTexts(lay("あいうえおかきくけこ", {}, { width: 55, height: 10 }))).toEqual(["あいうえ…"]);
     expect(

@@ -89,7 +89,8 @@ export class FixedMeasurer implements FontMeasurer {
     if (cp === undefined) return 0;
     if (char === "\n" || char === "\r" || char === "\r\n") return 0;
     if (cp === 0x20 || cp === 0x09) return size * this.spaceWidth;
-    if (cp === 0x3000) return size * this.fullWidth;
+    // 全角スペースと省略記号「…」。「…」は欧文フォントでもほぼ 1em（切り詰めで省略記号の幅を測るのに使う）
+    if (cp === 0x3000 || cp === 0x2026) return size * this.fullWidth;
     if (isFullWidthCodePoint(cp)) return size * this.fullWidth;
     return size * this.halfWidth;
   }

@@ -11,13 +11,11 @@ Swift 版は CoreText でグリフを直接描いていたが、Web ではブラ
 */
 
 import type { StoneContext } from "../context.js";
-import { isSpaceChar } from "../punctuation.js";
-import type { Run, Size } from "../types.js";
+import { HORIZONTAL_ELLIPSIS, isSpaceChar, VERTICAL_ELLIPSIS } from "../punctuation.js";
+import { SCRIPTS, type Run, type Size } from "../types.js";
 
-/** 横書きの省略記号 (U+2026)。 */
-export const HORIZONTAL_ELLIPSIS = "…";
-/** 縦書きの省略記号 (U+FE19 PRESENTATION FORM FOR VERTICAL HORIZONTAL ELLIPSIS)。 */
-export const VERTICAL_ELLIPSIS = "︙";
+/** 和文フォントの ID（フォント ID は SCRIPTS の添字と一致する）。縦書きの省略記号はこのフォントで描く。 */
+const JAPANESE_FONT_ID = SCRIPTS.indexOf("japanese");
 
 /** 縦組み用グリフを有効にする CSS 値。 */
 export const VERTICAL_FEATURE_SETTINGS = '"vert" 1, "vrt2" 1';
@@ -63,30 +61,76 @@ export interface GlyphParagraph {
   groups: GlyphGroup[];
 }
 
-/** run を描画要素にする。text は実際に描く文字列。 */
-function toGlyphElement(ctx: StoneContext, runId: number, text: string): GlyphElement {
+/** 描画要素の位置・フォント・向き。ふつうは run のものだが、省略記号は違うことがある。 */
+type GlyphPlacement = Pick<GlyphElement, "x" | "y" | "fontId" | "rotate" | "vertical">;
+
+/** run の描画要素を作る。text は実際に描く文字列。 */
+function glyphElement(ctx: StoneContext, runId: number, text: string, placement: GlyphPlacement): GlyphElement {
   const run = ctx.runs[runId];
-  const font = ctx.fontManager.font(run.fontId);
+  const font = ctx.fontManager.font(placement.fontId);
   return {
     runId,
     run,
-    x: run.position.x,
-    y: run.position.y,
+    x: placement.x,
+    y: placement.y,
     text,
-    fontId: run.fontId,
+    fontId: placement.fontId,
     fontFamily: font.family,
-    fontSize: ctx.fontManager.scaledSize(run.fontId, ctx.adjustFontSize),
+    fontSize: ctx.fontManager.scaledSize(placement.fontId, ctx.adjustFontSize),
     fontWeight: font.weight,
     fontStyle: font.style,
-    rotate: ctx.isClockwise(run) ? 90 : 0,
-    vertical: ctx.usesVerticalGlyph(run),
+    rotate: placement.rotate,
+    vertical: placement.vertical,
     line: run.line,
   };
 }
 
-/** 省略記号になった run に描く文字。 */
-function ellipsisOf(ctx: StoneContext): string {
-  return ctx.direction === "lrTb" ? HORIZONTAL_ELLIPSIS : VERTICAL_ELLIPSIS;
+/** run をそのフォント・位置で描く描画要素にする。text は実際に描く文字列。 */
+function toGlyphElement(ctx: StoneContext, runId: number, text: string): GlyphElement {
+  const run = ctx.runs[runId];
+  return glyphElement(ctx, runId, text, {
+    x: run.position.x,
+    y: run.position.y,
+    fontId: run.fontId,
+    rotate: ctx.isClockwise(run) ? 90 : 0,
+    vertical: ctx.usesVerticalGlyph(run),
+  });
+}
+
+/**
+ * 省略記号になった run の描画要素。省略記号は run の矩形の先頭から描く（約物の詰めでずらしたグリフの位置は使わない）。
+ * 横書きは run と同じフォントの「…」。縦書きは run の文字種にかかわらず、和文フォントの正立の「︙」を列の 1em 四方に描く
+ * （回転する欧文の run と一緒に回すと点が横に並び、縦中横の位置に描くと列の中央からずれる）。
+ * レイアウトは、この大きさの省略記号が領域に収まる run を選んでいる（Layouter の updateVisibility）。
+ */
+function toEllipsisElement(ctx: StoneContext, runId: number): GlyphElement {
+  const run = ctx.runs[runId];
+  if (ctx.direction === "lrTb") {
+    return glyphElement(ctx, runId, HORIZONTAL_ELLIPSIS, {
+      x: run.frame.x,
+      y: run.position.y,
+      fontId: run.fontId,
+      rotate: 0,
+      vertical: false,
+    });
+  }
+  const size = ctx.adjustFontSize;
+  return glyphElement(ctx, runId, VERTICAL_ELLIPSIS, {
+    x: columnLeft(ctx, run),
+    y: run.frame.y + size - ctx.fontManager.descent(JAPANESE_FONT_ID, size),
+    fontId: JAPANESE_FONT_ID,
+    rotate: 0,
+    vertical: true,
+  });
+}
+
+/** 縦書きで run がある列の左端。縦中横は列の中央に寄せてあるので、そのトークンの中央から求める。 */
+function columnLeft(ctx: StoneContext, run: Run): number {
+  if (!ctx.isTateChuYoko(run)) return run.frame.x;
+  const token = ctx.tokens[run.tokenId];
+  const first = ctx.runs[token.start].frame;
+  const last = ctx.runs[token.end - 1].frame;
+  return (first.x + last.x + last.width - ctx.adjustFontSize) * 0.5;
 }
 
 /** 描画対象の run を描画要素に変換する。改行や空白、非表示の run は含まれない。 */
@@ -97,7 +141,7 @@ export function glyphElements(ctx: StoneContext): GlyphElement[] {
     if (run.visibility === "invisible") continue;
     if (run.isNewline) continue;
     if (run.visibility === "ellipsis") {
-      elements.push(toGlyphElement(ctx, i, ellipsisOf(ctx)));
+      elements.push(toEllipsisElement(ctx, i));
     } else if (!isSpaceChar(run.char)) {
       elements.push(toGlyphElement(ctx, i, run.char));
     }
@@ -122,7 +166,7 @@ export function glyphParagraphs(ctx: StoneContext): GlyphParagraph[] {
       continue;
     }
     if (run.visibility === "invisible") continue;
-    glyphs.push(toGlyphElement(ctx, i, run.visibility === "ellipsis" ? ellipsisOf(ctx) : run.char));
+    glyphs.push(run.visibility === "ellipsis" ? toEllipsisElement(ctx, i) : toGlyphElement(ctx, i, run.char));
   }
   if (glyphs.length > 0) paragraphs.push({ groups: groupGlyphs(glyphs) });
   return paragraphs;

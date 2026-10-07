@@ -18,6 +18,16 @@ export function chars(ctx: StoneContext, line: number): string {
     .join("");
 }
 
+/** 描画される文字列。省略記号になった run は「…」にし、非表示の run は除く（改行の run も表示されていれば含める）。 */
+export function shown(ctx: StoneContext): string {
+  let s = "";
+  for (const run of ctx.runs) {
+    if (run.visibility === "ellipsis") s += "…";
+    else if (run.visibility === "visible") s += run.char;
+  }
+  return s;
+}
+
 export function lines(ctx: StoneContext): string[] {
   const out: string[] = [];
   for (let i = 0; i < ctx.lineCount; i++) out.push(chars(ctx, i));

@@ -3,6 +3,7 @@ context.ts — レイアウトの設定と結果を保持するコンテキス�
 */
 
 import { FontManager, resolveFonts } from "./fonts.js";
+import { isBlankChar } from "./punctuation.js";
 import type {
   Direction,
   DirectionAlign,
@@ -402,11 +403,15 @@ export class StoneContext {
   // Adjust
   //--------------------------------------------------------------//
 
-  /** 領域に収まらず、非表示または省略記号になった run があるかどうか。 */
+  /**
+   * 領域に収まらずに表示されない文字があるかどうか（省略記号になった run か、隠れた改行・空白以外の run があるか）。
+   * 末尾の空行のように改行・空白だけが隠れているときは false。adjustsFontSizeToFitWidth はこれが false になるまで縮小する。
+   */
   get isTruncated(): boolean {
     for (let i = this.runs.length - 1; i >= 0; i--) {
-      const v = this.runs[i].visibility;
-      if (v === "invisible" || v === "ellipsis") return true;
+      const run = this.runs[i];
+      if (run.visibility === "ellipsis") return true;
+      if (run.visibility === "invisible" && !isBlankChar(run.char)) return true;
     }
     return false;
   }

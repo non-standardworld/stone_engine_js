@@ -76,6 +76,11 @@ export function isSpaceChar(char: string): boolean {
   return WHITESPACE_RE.test(char) && !isNewlineChar(char);
 }
 
+/** 改行か空白（描くものがない文字）かどうか。 */
+export function isBlankChar(char: string): boolean {
+  return isNewlineChar(char) || isSpaceChar(char);
+}
+
 const NUMBER_RE = /^\p{N}+$/u;
 
 /** Swift の Character.isNumber に相当（Unicode の Numeric 系カテゴリ）。 */

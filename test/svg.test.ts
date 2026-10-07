@@ -57,4 +57,13 @@ describe("textOfRunRange", () => {
     expect(textOfRunRange(ctx, 0, ellipsis)).toBe("あいうえ");
     expect(textOfRunRange(ctx, 1, ellipsis + 1)).toBe("いうえおかきくけこ");
   });
+
+  it("includes the newline and blank lines after the ellipsis", () => {
+    // 改行や空行の手前の文字が省略記号になり、その後ろの改行・空行は隠れる
+    const newline = lay("あ\nい", {}, { height: 10 });
+    expect(textOfRunRange(newline, 0, 1)).toBe("あ\nい");
+    const blank = lay("あいう\n\nえお", {}, { height: 20 });
+    expect(textOfRunRange(blank, 0, 2)).toBe("あい");
+    expect(textOfRunRange(blank, 0, 3)).toBe("あいう\n\nえお");
+  });
 });

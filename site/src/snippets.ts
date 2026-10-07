@@ -125,7 +125,7 @@ export const PROPS: PropRow[] = [
   { name: "allowsTateChuYoko", def: "true", desc: "縦書きで 2 桁以下の数字を正体にする（縦中横）" },
   { name: "adjustsFontSizeToFitWidth / minimumScaleFactor", def: "false / 0", desc: "収まらないときにフォントを縮小する" },
   { name: "fonts", def: "", desc: "文字種（latin / japanese / emoji）ごとの { family, scale, weight, style, ascent, descent }" },
-  { name: "width / height", def: '横書き "container" / "auto"、縦書き "auto" / "auto"', desc: 'レイアウト領域。数値（px）、"auto"（制限なし）、"container"（コンポーネントの大きさ）。縦書きの幅は内容に合わせて左に伸びる' },
+  { name: "width / height", def: '横書き "container" / "auto"、縦書き "auto" / "auto"', desc: 'レイアウト領域。数値（px）、"auto"（制限なし）、"container"（コンポーネントの大きさ）。縦書きの幅は内容に合わせて左に伸びる。行送り方向（横書きは高さ、縦書きは幅）に収まらない行は表示せず、続きがあるときは最後に表示する文字を省略記号にする' },
   { name: "color", def: "currentColor", desc: "文字色" },
   { name: "showFrames", def: "false", desc: "各文字の占有矩形を描く（デバッグ用）" },
   { name: "fallback", def: '"text"', desc: "レイアウト前（SSR・フォント読み込み前）の表示。text 通常のテキスト、hidden 場所だけ確保、none 視覚表示なし（スクリーンリーダー用テキストは残る）" },

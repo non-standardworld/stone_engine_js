@@ -55,6 +55,21 @@ describe("layout lrTb", () => {
     expect(ctx.runs.map((r) => r.frame.width)).toEqual([10, 10, 10, 10, 10, 10, 10]);
     expect(ctx.runs.every((r) => r.position.y === 8.8)).toBe(true);
   });
+
+  it("sets upright general punctuation such as ※ and ‼ at full width in the Japanese font", () => {
+    // 欧文フォント（スケール 0.95）だと「※」が小さくなり、「‼」も半角の幅に詰まる
+    const ctx = lay("※あ‼い†‰");
+    expect(ctx.runs.map((r) => r.fontId)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(ctx.runs.map((r) => r.frame.x)).toEqual([0, 10, 20, 30, 40, 50]);
+    expect(ctx.runs.every((r) => r.frame.width === 10 && r.frame.height === 10)).toBe(true);
+    expect(ctx.runs.every((r) => r.position.y === 8.8)).toBe(true);
+    // 欧文の単語の後ろでも和文フォントの全角
+    const latin = lay("Wow‼");
+    const mark = runOf(latin, "‼").run;
+    expect(mark.fontId).toBe(1);
+    expect(mark.frame.x).toBeCloseTo(9.5 * 0.55 * 3);
+    expect(mark.frame.width).toBe(10);
+  });
 });
 
 describe("kinsoku", () => {
@@ -86,6 +101,13 @@ describe("kinsoku", () => {
     expect(lines(lay("あいう……」え", {}, { width: 50 }))).toEqual(["あいう", "……」え"]);
     // kinsoku を切れば分ける
     expect(lines(lay("あいうえ……か", { kinsoku: false }, { width: 50 }))).toEqual(["あいうえ…", "…か"]);
+  });
+
+  it("does not start a line with ‼ or ⁉ set in the Japanese font", () => {
+    // 「‼」「⁇」「⁈」「⁉」は行頭禁則。和文として全角で組んでも、直前の文字と一緒に次の行へ送る
+    for (const mark of Array.from("‼⁇⁈⁉")) {
+      expect(lines(lay(`あいうえお${mark}か`, {}, { width: 50 }))).toEqual(["あいうえ", `お${mark}か`]);
+    }
   });
 
   it("splits a run of leaders that cannot be kept on one line", () => {

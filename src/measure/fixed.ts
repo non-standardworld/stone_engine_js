@@ -63,8 +63,8 @@ export function isFullWidthCodePoint(cp: number): boolean {
   if (cp >= 0xff01 && cp <= 0xff60) return true; // 全角英数・記号
   if (cp >= 0xffe0 && cp <= 0xffe6) return true;
   if (cp >= 0xff61 && cp <= 0xffdc) return false; // 半角カナ・半角ハングル
-  // 和文として扱うダーシ・リーダー（「—」「―」「‥」「…」）。和文フォントでは全角で、「…」は欧文フォントでもほぼ 1em
-  // （切り詰めでは欧文の run のフォントで省略記号の幅を測る）
+  // 和文として扱う一般句読点（「—」「―」「‥」「…」「‼」「※」「†」「‰」など）。和文フォントでは全角で、「…」は欧文フォントでも
+  // ほぼ 1em（切り詰めでは欧文の run のフォントで省略記号の幅を測る）
   if (isJapanesePunctuationCodePoint(cp)) return true;
   const category = unicodeCategoryOf(cp);
   return category !== null && FULL_WIDTH_CATEGORIES.has(category);

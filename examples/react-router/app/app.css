@@ -149,7 +149,7 @@ body {
   cursor: default;
 }
 
-.stone-text svg text:hover {
+.stone-text svg [data-run]:hover {
   fill: var(--accent);
 }
 

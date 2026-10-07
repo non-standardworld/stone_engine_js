@@ -2,10 +2,16 @@
 render/svg.ts — レイアウト結果を SVG に変換する（フレームワーク非依存）。
 
 Swift 版は CoreText でグリフを直接描いていたが、Web ではブラウザのフォント描画をそのまま使う。
-1 文字ごとに <text x y> を置き、縦書きの欧文は rotate(90)、和文は font-feature-settings の vert で縦組み用グリフに置き換える。
+1 文字ごとに <tspan x y> を置き、縦書きの欧文は rotate="90"、和文は font-feature-settings の vert で縦組み用グリフに置き換える。
+
+<text> は改行で区切った段落ごとに 1 つにまとめる。Chrome / Safari は SVG の <text> をブロックとして扱い、
+選択範囲をコピーするときに <text> の境目ごとに改行を入れるため、1 文字ごとに <text> を分けると
+コピーしたテキストが 1 文字ずつ改行されてしまう（縦書きのようになる）。
+空白の run も <tspan> として xml:space="preserve" で残し、コピーしたときに単語間の空白が消えないようにする。
 */
 
 import type { StoneContext } from "../context.js";
+import { isSpaceChar } from "../punctuation.js";
 import type { Run, Size } from "../types.js";
 
 /** 横書きの省略記号 (U+2026)。 */
@@ -15,6 +21,9 @@ export const VERTICAL_ELLIPSIS = "︙";
 
 /** 縦組み用グリフを有効にする CSS 値。 */
 export const VERTICAL_FEATURE_SETTINGS = '"vert" 1, "vrt2" 1';
+
+/** showFrames で描く矩形の既定の色。 */
+export const DEFAULT_FRAME_COLOR = "rgba(0,128,255,0.6)";
 
 export interface GlyphElement {
   runId: number;
@@ -48,47 +57,87 @@ export interface GlyphGroup {
   glyphs: GlyphElement[];
 }
 
-const WHITESPACE_RE = /^\s+$/u;
+/** 改行で区切られた段落。SVG では段落ごとに 1 つの <text> にする。 */
+export interface GlyphParagraph {
+  /** 段落内の描画要素を、連続する同じフォント設定ごとにまとめたもの。 */
+  groups: GlyphGroup[];
+}
+
+/** run を描画要素にする。text は実際に描く文字列。 */
+function toGlyphElement(ctx: StoneContext, runId: number, text: string): GlyphElement {
+  const run = ctx.runs[runId];
+  const font = ctx.fontManager.font(run.fontId);
+  return {
+    runId,
+    run,
+    x: run.position.x,
+    y: run.position.y,
+    text,
+    fontId: run.fontId,
+    fontFamily: font.family,
+    fontSize: ctx.fontManager.scaledSize(run.fontId, ctx.adjustFontSize),
+    fontWeight: font.weight,
+    fontStyle: font.style,
+    rotate: ctx.isClockwise(run) ? 90 : 0,
+    vertical: ctx.usesVerticalGlyph(run),
+    line: run.line,
+  };
+}
+
+/** 省略記号になった run に描く文字。 */
+function ellipsisOf(ctx: StoneContext): string {
+  return ctx.direction === "lrTb" ? HORIZONTAL_ELLIPSIS : VERTICAL_ELLIPSIS;
+}
 
 /** 描画対象の run を描画要素に変換する。改行や空白、非表示の run は含まれない。 */
 export function glyphElements(ctx: StoneContext): GlyphElement[] {
   const elements: GlyphElement[] = [];
-  const size = ctx.adjustFontSize;
   for (let i = 0; i < ctx.runs.length; i++) {
     const run = ctx.runs[i];
     if (run.visibility === "invisible") continue;
     if (run.isNewline) continue;
-    let text = run.char;
     if (run.visibility === "ellipsis") {
-      text = ctx.direction === "lrTb" ? HORIZONTAL_ELLIPSIS : VERTICAL_ELLIPSIS;
-    } else if (WHITESPACE_RE.test(text)) {
-      continue;
+      elements.push(toGlyphElement(ctx, i, ellipsisOf(ctx)));
+    } else if (!isSpaceChar(run.char)) {
+      elements.push(toGlyphElement(ctx, i, run.char));
     }
-    const font = ctx.fontManager.font(run.fontId);
-    elements.push({
-      runId: i,
-      run,
-      x: run.position.x,
-      y: run.position.y,
-      text,
-      fontId: run.fontId,
-      fontFamily: font.family,
-      fontSize: ctx.fontManager.scaledSize(run.fontId, size),
-      fontWeight: font.weight,
-      fontStyle: font.style,
-      rotate: ctx.isClockwise(run) ? 90 : 0,
-      vertical: ctx.usesVerticalGlyph(run),
-      line: run.line,
-    });
   }
   return elements;
 }
 
-/** 連続する同じフォント設定の描画要素をまとめる（<g> 1 つにつき font 属性 1 組）。 */
+/**
+ * 描画要素を段落（改行で区切られた範囲）ごとにまとめる。SVG の出力はこれを使う。
+ * glyphElements と違って空白の run も含める（見た目は変わらないが、選択してコピーしたときに空白が残る）。
+ * 空行は、その行の改行の run を空白 1 つとして置く（コピーしたときに空行が詰まらないように）。
+ */
+export function glyphParagraphs(ctx: StoneContext): GlyphParagraph[] {
+  const paragraphs: GlyphParagraph[] = [];
+  let glyphs: GlyphElement[] = [];
+  for (let i = 0; i < ctx.runs.length; i++) {
+    const run = ctx.runs[i];
+    if (run.isNewline) {
+      if (glyphs.length === 0 && run.visibility === "visible") glyphs.push(toGlyphElement(ctx, i, " "));
+      if (glyphs.length > 0) paragraphs.push({ groups: groupGlyphs(glyphs) });
+      glyphs = [];
+      continue;
+    }
+    if (run.visibility === "invisible") continue;
+    glyphs.push(toGlyphElement(ctx, i, run.visibility === "ellipsis" ? ellipsisOf(ctx) : run.char));
+  }
+  if (glyphs.length > 0) paragraphs.push({ groups: groupGlyphs(glyphs) });
+  return paragraphs;
+}
+
+/** glyphElements の結果を、連続する同じフォント設定ごとにまとめる（段落には分けない）。 */
 export function glyphGroups(ctx: StoneContext): GlyphGroup[] {
+  return groupGlyphs(glyphElements(ctx));
+}
+
+/** 連続する同じフォント設定の描画要素をまとめる（font 属性 1 組ごと）。 */
+function groupGlyphs(elements: GlyphElement[]): GlyphGroup[] {
   const groups: GlyphGroup[] = [];
   let current: GlyphGroup | null = null;
-  for (const el of glyphElements(ctx)) {
+  for (const el of elements) {
     if (
       current &&
       current.fontId === el.fontId &&
@@ -182,7 +231,7 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
   parts.push(`<svg ${attrs.join(" ")}>`);
 
   if (options.showFrames) {
-    parts.push(`<g fill="none" stroke="${escapeAttr(options.frameColor ?? "rgba(0,128,255,0.6)")}" stroke-width="1">`);
+    parts.push(`<g fill="none" stroke="${escapeAttr(options.frameColor ?? DEFAULT_FRAME_COLOR)}" stroke-width="1">`);
     for (const run of ctx.runs) {
       if (run.visibility === "invisible") continue;
       const f = run.frame;
@@ -191,22 +240,27 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
     parts.push("</g>");
   }
 
-  for (const group of glyphGroups(ctx)) {
-    const gAttrs = [
-      `font-family="${escapeAttr(group.fontFamily)}"`,
-      `font-size="${num(group.fontSize)}"`,
-      `font-weight="${escapeAttr(String(group.fontWeight))}"`,
-      `font-style="${escapeAttr(group.fontStyle)}"`,
-    ];
-    if (group.vertical) gAttrs.push(`style="font-feature-settings:${escapeAttr(VERTICAL_FEATURE_SETTINGS)}"`);
-    parts.push(`<g ${gAttrs.join(" ")}>`);
-    for (const el of group.glyphs) {
-      const transform = el.rotate ? ` transform="rotate(90 ${num(el.x)} ${num(el.y)})"` : "";
-      parts.push(
-        `<text x="${num(el.x)}" y="${num(el.y)}"${transform} data-run="${el.runId}">${escapeText(el.text)}</text>`,
-      );
+  for (const paragraph of glyphParagraphs(ctx)) {
+    parts.push('<text xml:space="preserve">');
+    for (const group of paragraph.groups) {
+      const gAttrs = [
+        `font-family="${escapeAttr(group.fontFamily)}"`,
+        `font-size="${num(group.fontSize)}"`,
+        `font-weight="${escapeAttr(String(group.fontWeight))}"`,
+        `font-style="${escapeAttr(group.fontStyle)}"`,
+      ];
+      if (group.vertical) gAttrs.push(`style="font-feature-settings:${escapeAttr(VERTICAL_FEATURE_SETTINGS)}"`);
+      parts.push(`<tspan ${gAttrs.join(" ")}>`);
+      for (const el of group.glyphs) {
+        // rotate 属性はグリフをその原点（x, y）を中心に回す。1 文字ごとの <text> に transform="rotate(90 x y)" を付けたのと同じ見た目になる
+        const rotate = el.rotate ? ` rotate="${el.rotate}"` : "";
+        parts.push(
+          `<tspan x="${num(el.x)}" y="${num(el.y)}"${rotate} data-run="${el.runId}">${escapeText(el.text)}</tspan>`,
+        );
+      }
+      parts.push("</tspan>");
     }
-    parts.push("</g>");
+    parts.push("</text>");
   }
 
   parts.push("</svg>");

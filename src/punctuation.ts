@@ -69,6 +69,13 @@ export function isNewlineChar(char: string): boolean {
   return NEWLINES.has(char);
 }
 
+const WHITESPACE_RE = /^\s+$/u;
+
+/** 改行以外の空白文字（半角・全角スペース、タブなど）かどうか。 */
+export function isSpaceChar(char: string): boolean {
+  return WHITESPACE_RE.test(char) && !isNewlineChar(char);
+}
+
 const NUMBER_RE = /^\p{N}+$/u;
 
 /** Swift の Character.isNumber に相当（Unicode の Numeric 系カテゴリ）。 */

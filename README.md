@@ -14,7 +14,7 @@ Swift 版は CoreText でグリフを取り出し、`STLayout` が 1 文字ず�
 - 解析（`STParser`）は `Intl.Segmenter` で単語／書記素に分割
 - 計測（CoreText の送り幅・アセント／ディセント）は Canvas 2D の `measureText` で取得
 - レイアウト（`STLayout` / `STContext`）は TypeScript にそのまま移植
-- 描画は SVG の `<text>` 要素を 1 文字ずつ置く。縦書きの欧文は `rotate(90)`、和文は `font-feature-settings: "vert"` で縦組み用グリフに置換
+- 描画は SVG。改行で区切った段落ごとに `<text>` を 1 つ置き、その中に 1 文字ずつ位置を指定した `<tspan>` を並べる。縦書きの欧文は `rotate="90"`、和文は `font-feature-settings: "vert"` で縦組み用グリフに置換
 
 という構成です。フォントファイルを読み込む必要はなく、CSS で使える Web フォント（Google Fonts など）やシステムフォントがそのまま使えます。レイアウト結果は 1 文字ごとの位置・矩形・行番号として取り出せるので、Swift 版と同じく「内部構造を直接触れる」エンジンになっています。
 
@@ -72,6 +72,12 @@ export function Article() {
 - `"none"`: 視覚的には何も描かず、スクリーンリーダー用のテキストだけを残す
 
 組版後も、スクリーンリーダーと検索エンジンのために元のテキストを視覚的に隠した要素として保持し、SVG は `aria-hidden` にしています。
+
+### 選択とコピー
+
+組版後の SVG のテキストも、通常のテキストと同じように選択してコピーできます。1 つのテキストの中で選択したときは、改行・空白・空行を含む元のテキストがそのままクリップボードに入ります（省略記号まで選択した場合は、切り詰められた残りも含みます）。ページの他の部分にまたがる選択はブラウザ標準のコピーになりますが、段落ごとに `<text>` をまとめているので、1 文字ずつ改行されることはありません。視覚的に隠した元のテキストは選択の対象外（`user-select: none`）にしているので、二重にコピーされることもありません。
+
+SVG の中の 1 文字は `data-run`（run ID）を持つ `<tspan>` です。文字ごとにスタイルを当てるときは `.stone-text svg [data-run]` を対象にしてください（`svg text` は段落全体になります）。
 
 ### プロパティ
 
@@ -136,10 +142,12 @@ handle.destroy();
 さらに低いレベルでは、`layoutText()` に計測器（ブラウザなら `getSharedCanvasMeasurer()`）を渡して `StoneContext` を受け取り、`svgString()` で SVG 文字列にできます。計測器は `FontMeasurer` インターフェースなので、opentype.js などでフォントファイルから計測する実装に差し替えれば、サーバー側で組版して SVG を SSR することもできます。
 
 ```ts
-import { layoutText, svgString, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine";
+import { layoutText, svgString, handleStoneCopy, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine";
 
 const layout = layoutText(text, { direction: "tbRl", fontSize: 20 }, getSharedCanvasMeasurer()!, { height: 400 });
 element.innerHTML = svgString(layout);
+// コピーしたときに元のテキスト（改行・空白を含む）が入るようにする。mountStoneText と StoneSVG は自動で行う
+element.addEventListener("copy", (event) => handleStoneCopy(event, layout, element));
 ```
 
 ## Swift 版との違い

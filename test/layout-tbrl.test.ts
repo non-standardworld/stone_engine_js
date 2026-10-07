@@ -110,9 +110,9 @@ describe("layout tbRl", () => {
   it("renders vertical text as SVG with rotation and vert features", () => {
     const ctx = lay("あA", { direction: "tbRl" });
     const svg = svgString(ctx);
-    expect(svg).toContain("rotate(90");
+    expect(svg).toContain('rotate="90" data-run="1"');
     expect(svg).toContain("font-feature-settings");
-    expect((svg.match(/<text /g) ?? []).length).toBe(2);
+    expect((svg.match(/<text /g) ?? []).length).toBe(1);
     expect(svg).toContain('data-run="0"');
   });
 });

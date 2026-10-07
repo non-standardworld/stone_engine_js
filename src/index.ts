@@ -42,14 +42,17 @@ export {
   VERTICAL_FEATURE_SETTINGS,
   glyphElements,
   glyphGroups,
+  glyphParagraphs,
   isSafeSvgAttributeName,
   svgOverflow,
   svgSize,
   svgString,
   type GlyphElement,
   type GlyphGroup,
+  type GlyphParagraph,
   type SvgStringOptions,
 } from "./render/svg.js";
+export { handleStoneCopy, runRangeOfSelection, textOfRunRange, type CopyEventLike } from "./render/copy.js";
 export {
   StoneTextController,
   resolveLayoutSize,

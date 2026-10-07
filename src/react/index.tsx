@@ -11,6 +11,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type CSSProperties,
   type ReactNode,
   type RefObject,
@@ -18,7 +19,8 @@ import {
 } from "react";
 import { resolveLayoutSize, StoneTextController, type SizeSpec } from "../controller.js";
 import type { StoneContext } from "../context.js";
-import { glyphGroups, svgOverflow, svgSize, VERTICAL_FEATURE_SETTINGS } from "../render/svg.js";
+import { handleStoneCopy } from "../render/copy.js";
+import { glyphParagraphs, svgOverflow, svgSize, VERTICAL_FEATURE_SETTINGS } from "../render/svg.js";
 import { resolveFonts } from "../fonts.js";
 import type { FontMeasurer, Size, StoneOptions } from "../types.js";
 
@@ -37,6 +39,13 @@ const SR_ONLY: CSSProperties = {
   clip: "rect(0, 0, 0, 0)",
   whiteSpace: "nowrap",
   border: 0,
+};
+
+/** 組版後のスクリーンリーダー用テキスト。前後の文章ごと選択してコピーしたときに、SVG のテキストと二重にならないよう選択対象から外す。 */
+const SR_SOURCE: CSSProperties = {
+  ...SR_ONLY,
+  WebkitUserSelect: "none",
+  userSelect: "none",
 };
 
 /** オプションを比較用の文字列にする（オブジェクトの同一性ではなく内容で依存配列を作るため）。 */
@@ -124,17 +133,26 @@ export interface StoneSVGProps extends Omit<SVGProps<SVGSVGElement>, "width" | "
   frameColor?: string;
 }
 
-/** レイアウト結果を SVG として描画する表示専用コンポーネント。 */
+/**
+ * レイアウト結果を SVG として描画する表示専用コンポーネント。
+ * SVG の中だけを選択してコピーしたときは、改行や空白を含む元のテキストがクリップボードに入る。
+ */
 export function StoneSVG({
   layout,
   color = "currentColor",
   showFrames = false,
   frameColor = "rgba(0, 128, 255, 0.6)",
   style,
+  onCopy,
   ...rest
 }: StoneSVGProps) {
   const size = svgSize(layout);
-  const groups = glyphGroups(layout);
+  const paragraphs = glyphParagraphs(layout);
+  const handleCopy = (e: ClipboardEvent<SVGSVGElement>) => {
+    onCopy?.(e);
+    if (e.isDefaultPrevented() || e.nativeEvent.defaultPrevented) return;
+    handleStoneCopy(e, layout, e.currentTarget);
+  };
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -150,6 +168,7 @@ export function StoneSVG({
         fontKerning: "none",
         ...style,
       }}
+      onCopy={handleCopy}
       {...rest}
     >
       {showFrames && (
@@ -167,27 +186,25 @@ export function StoneSVG({
           )}
         </g>
       )}
-      {groups.map((group, gi) => (
-        <g
-          key={gi}
-          fontFamily={group.fontFamily}
-          fontSize={group.fontSize}
-          fontWeight={group.fontWeight}
-          fontStyle={group.fontStyle}
-          style={group.vertical ? { fontFeatureSettings: VERTICAL_FEATURE_SETTINGS } : undefined}
-        >
-          {group.glyphs.map((el) => (
-            <text
-              key={el.runId}
-              x={el.x}
-              y={el.y}
-              transform={el.rotate ? `rotate(90 ${el.x} ${el.y})` : undefined}
-              data-run={el.runId}
+      {paragraphs.map((paragraph, pi) => (
+        <text key={pi} xmlSpace="preserve">
+          {paragraph.groups.map((group, gi) => (
+            <tspan
+              key={gi}
+              fontFamily={group.fontFamily}
+              fontSize={group.fontSize}
+              fontWeight={group.fontWeight}
+              fontStyle={group.fontStyle}
+              style={group.vertical ? { fontFeatureSettings: VERTICAL_FEATURE_SETTINGS } : undefined}
             >
-              {el.text}
-            </text>
+              {group.glyphs.map((el) => (
+                <tspan key={el.runId} x={el.x} y={el.y} rotate={el.rotate || undefined} data-run={el.runId}>
+                  {el.text}
+                </tspan>
+              ))}
+            </tspan>
           ))}
-        </g>
+        </text>
       ))}
     </svg>
   );
@@ -282,7 +299,7 @@ export function StoneText(props: StoneTextProps) {
     >
       {layout ? (
         <>
-          <span className="stone-text__source" style={SR_ONLY}>
+          <span className="stone-text__source" style={SR_SOURCE}>
             {content}
           </span>
           <StoneSVG layout={layout} color={color} showFrames={showFrames} {...svgProps} />

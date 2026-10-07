@@ -4,6 +4,7 @@ vanilla.ts — フレームワークを使わずに DOM 要素へ描画する AP
 
 import { resolveLayoutSize, StoneTextController, type SizeSpec } from "./controller.js";
 import type { StoneContext } from "./context.js";
+import { handleStoneCopy } from "./render/copy.js";
 import { svgString } from "./render/svg.js";
 import type { FontMeasurer, Size, StoneOptions } from "./types.js";
 
@@ -30,11 +31,17 @@ export interface StoneTextHandle {
 /**
  * container の中にテキストを組んで SVG として描画する。
  * container の大きさが変わると自動的にレイアウトし直す。
+ * container の中だけを選択してコピーしたときは、改行や空白を含む元のテキストがクリップボードに入る。
  */
 export function mountStoneText(container: HTMLElement, options: MountOptions): StoneTextHandle {
   let current: MountOptions = { ...options };
   let latest: StoneContext | null = null;
   let containerSize: Size | null = null;
+
+  const onCopy = (event: ClipboardEvent): void => {
+    if (latest && !event.defaultPrevented) handleStoneCopy(event, latest, container);
+  };
+  container.addEventListener("copy", onCopy);
 
   const controller = new StoneTextController({
     measurer: current.measurer,
@@ -77,6 +84,7 @@ export function mountStoneText(container: HTMLElement, options: MountOptions): S
     destroy() {
       observer?.disconnect();
       controller.dispose();
+      container.removeEventListener("copy", onCopy);
       container.innerHTML = "";
     },
   };

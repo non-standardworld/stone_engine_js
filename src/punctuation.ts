@@ -65,6 +65,27 @@ export const KINSOKU_HANGING: ReadonlySet<string> = new Set(Array.from("、。")
  */
 export const KINSOKU_INSEPARABLE: ReadonlySet<string> = new Set(Array.from("—―‥…〳〴〵"));
 
+/**
+ * 引用符「“」「”」「‘」「’」(U+201C, U+201D, U+2018, U+2019)。欧文にも和文にも使うので、文字種は前後の文字で決める
+ * （parser.ts の resolveQuotationMarkFonts）。値は始め（“ ‘）なら true、終わり（” ’）なら false。
+ */
+const QUOTATION_MARKS: ReadonlyMap<string, boolean> = new Map([
+  ["“", true],
+  ["‘", true],
+  ["”", false],
+  ["’", false],
+]);
+
+/** 引用符「“」「”」「‘」「’」かどうか。 */
+export function isQuotationMark(char: string): boolean {
+  return QUOTATION_MARKS.has(firstCodePointString(char));
+}
+
+/** 始めの引用符「“」「‘」かどうか。 */
+export function isOpeningQuotationMark(char: string): boolean {
+  return QUOTATION_MARKS.get(firstCodePointString(char)) === true;
+}
+
 /** 横書きの省略記号 (U+2026)。 */
 export const HORIZONTAL_ELLIPSIS = "…";
 /** 縦書きの省略記号 (U+FE19 PRESENTATION FORM FOR VERTICAL HORIZONTAL ELLIPSIS)。 */

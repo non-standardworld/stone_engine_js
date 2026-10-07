@@ -3,6 +3,7 @@ render/svg.ts — レイアウト結果を SVG に変換する（フレームワ
 
 Swift 版は CoreText でグリフを直接描いていたが、Web ではブラウザのフォント描画をそのまま使う。
 1 文字ごとに <tspan x y> を置き、縦書きの欧文は rotate="90"、和文は font-feature-settings の vert で縦組み用グリフに置き換える。
+縦書きの和文の引用符「“」「”」「‘」「’」は、fwid で全角の字形にしてから vert で縦組み用グリフ（〝〟の形）にする。
 
 <text> は改行で区切った段落ごとに 1 つにまとめる。Chrome / Safari は SVG の <text> をブロックとして扱い、
 選択範囲をコピーするときに <text> の境目ごとに改行を入れるため、1 文字ごとに <text> を分けると
@@ -19,6 +20,12 @@ const JAPANESE_FONT_ID = SCRIPTS.indexOf("japanese");
 
 /** 縦組み用グリフを有効にする CSS 値。 */
 export const VERTICAL_FEATURE_SETTINGS = '"vert" 1, "vrt2" 1';
+
+/**
+ * 全角の字形の縦組み用グリフを使う CSS 値（縦書きの和文の引用符）。和文フォント（ヒラギノなど）の「“」などはプロポーショナルな
+ * 字形で、vert の置き換え先がない（vrt2 だと回転した字形になる）。全角の字形（fwid）には縦組み用グリフ（〝〟の形）がある。
+ */
+export const FULL_WIDTH_VERTICAL_FEATURE_SETTINGS = '"fwid" 1, "vert" 1, "vrt2" 1';
 
 /** showFrames で描く矩形の既定の色。 */
 export const DEFAULT_FRAME_COLOR = "rgba(0,128,255,0.6)";
@@ -42,6 +49,8 @@ export interface GlyphElement {
   rotate: 0 | 90;
   /** 縦組み用グリフ（vert）を使う。 */
   vertical: boolean;
+  /** 全角の字形（fwid）を使う（縦書きの和文の引用符）。 */
+  fullWidth: boolean;
   line: number;
 }
 
@@ -52,6 +61,8 @@ export interface GlyphGroup {
   fontWeight: number | string;
   fontStyle: string;
   vertical: boolean;
+  /** 全角の字形（fwid）を使う。 */
+  fullWidth: boolean;
   glyphs: GlyphElement[];
 }
 
@@ -62,7 +73,7 @@ export interface GlyphParagraph {
 }
 
 /** 描画要素の位置・フォント・向き。ふつうは run のものだが、省略記号は違うことがある。 */
-type GlyphPlacement = Pick<GlyphElement, "x" | "y" | "fontId" | "rotate" | "vertical">;
+type GlyphPlacement = Pick<GlyphElement, "x" | "y" | "fontId" | "rotate" | "vertical" | "fullWidth">;
 
 /** run の描画要素を作る。text は実際に描く文字列。 */
 function glyphElement(ctx: StoneContext, runId: number, text: string, placement: GlyphPlacement): GlyphElement {
@@ -81,6 +92,7 @@ function glyphElement(ctx: StoneContext, runId: number, text: string, placement:
     fontStyle: font.style,
     rotate: placement.rotate,
     vertical: placement.vertical,
+    fullWidth: placement.fullWidth,
     line: run.line,
   };
 }
@@ -94,6 +106,7 @@ function toGlyphElement(ctx: StoneContext, runId: number, text: string): GlyphEl
     fontId: run.fontId,
     rotate: ctx.isClockwise(run) ? 90 : 0,
     vertical: ctx.usesVerticalGlyph(run),
+    fullWidth: ctx.usesFullWidthGlyph(run),
   });
 }
 
@@ -112,6 +125,7 @@ function toEllipsisElement(ctx: StoneContext, runId: number): GlyphElement {
       fontId: run.fontId,
       rotate: 0,
       vertical: false,
+      fullWidth: false,
     });
   }
   const size = ctx.adjustFontSize;
@@ -121,6 +135,7 @@ function toEllipsisElement(ctx: StoneContext, runId: number): GlyphElement {
     fontId: JAPANESE_FONT_ID,
     rotate: 0,
     vertical: true,
+    fullWidth: false,
   });
 }
 
@@ -186,6 +201,7 @@ function groupGlyphs(elements: GlyphElement[]): GlyphGroup[] {
       current &&
       current.fontId === el.fontId &&
       current.vertical === el.vertical &&
+      current.fullWidth === el.fullWidth &&
       current.fontSize === el.fontSize
     ) {
       current.glyphs.push(el);
@@ -198,11 +214,18 @@ function groupGlyphs(elements: GlyphElement[]): GlyphGroup[] {
       fontWeight: el.fontWeight,
       fontStyle: el.fontStyle,
       vertical: el.vertical,
+      fullWidth: el.fullWidth,
       glyphs: [el],
     };
     groups.push(current);
   }
   return groups;
+}
+
+/** グループに指定する font-feature-settings。指定しないなら null。 */
+export function fontFeatureSettingsOf(group: GlyphGroup): string | null {
+  if (group.fullWidth) return FULL_WIDTH_VERTICAL_FEATURE_SETTINGS;
+  return group.vertical ? VERTICAL_FEATURE_SETTINGS : null;
 }
 
 /** 幅と高さの両方が固定なら、Swift 版の STLabel と同じく領域外を切り取る。 */
@@ -293,7 +316,8 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
         `font-weight="${escapeAttr(String(group.fontWeight))}"`,
         `font-style="${escapeAttr(group.fontStyle)}"`,
       ];
-      if (group.vertical) gAttrs.push(`style="font-feature-settings:${escapeAttr(VERTICAL_FEATURE_SETTINGS)}"`);
+      const features = fontFeatureSettingsOf(group);
+      if (features) gAttrs.push(`style="font-feature-settings:${escapeAttr(features)}"`);
       parts.push(`<tspan ${gAttrs.join(" ")}>`);
       for (const el of group.glyphs) {
         // rotate 属性はグリフをその原点（x, y）を中心に回す。1 文字ごとの <text> に transform="rotate(90 x y)" を付けたのと同じ見た目になる

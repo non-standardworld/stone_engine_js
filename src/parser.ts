@@ -6,8 +6,15 @@ Swift 版は String.enumerateSubstrings(.byWords / .byComposedCharacterSequences
 */
 
 import { fontIdForChar } from "./fonts.js";
-import { isNewlineChar, isNumberChar, punctuationOf } from "./punctuation.js";
-import type { Run, Token } from "./types.js";
+import {
+  isNewlineChar,
+  isNumberChar,
+  isOpeningQuotationMark,
+  isQuotationMark,
+  isSpaceChar,
+  punctuationOf,
+} from "./punctuation.js";
+import { SCRIPTS, type Run, type Token } from "./types.js";
 
 export interface ParseResult {
   runs: Run[];
@@ -110,6 +117,31 @@ function createRun(char: string, tokenId: number, tokenRunIndex: number, prevFon
   };
 }
 
+const LATIN_FONT_ID = SCRIPTS.indexOf("latin");
+const JAPANESE_FONT_ID = SCRIPTS.indexOf("japanese");
+
+/**
+ * 引用符「“」「”」「‘」「’」のフォントを前後の文字で決める。始めの引用符は後ろ、終わりの引用符は前の文字（続く引用符は飛ばす）が
+ * 欧文フォントの文字なら欧文（"“Hello”"、"it’s"、和文中の「“OK”」）、それ以外（和文・空白・改行・行頭／行末）なら和文にする。
+ * 引用符の後ろの改行は、決めた引用符のフォントを引き継ぎ直す。
+ */
+function resolveQuotationMarkFonts(runs: Run[]): void {
+  const isLatinNeighbor = (run: Run | undefined): boolean =>
+    run !== undefined && !run.isNewline && !isSpaceChar(run.char) && run.fontId === LATIN_FONT_ID;
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i];
+    if (run.isNewline) {
+      run.fontId = i > 0 ? runs[i - 1].fontId : 0;
+      continue;
+    }
+    if (!isQuotationMark(run.char)) continue;
+    const step = isOpeningQuotationMark(run.char) ? 1 : -1;
+    let j = i + step;
+    while (j >= 0 && j < runs.length && isQuotationMark(runs[j].char)) j += step;
+    run.fontId = isLatinNeighbor(runs[j]) ? LATIN_FONT_ID : JAPANESE_FONT_ID;
+  }
+}
+
 /**
  * テキストを解析して runs / tokens を作る。送り幅（advance）はまだ 0 で、measureRuns で埋める。
  * @param dividesByWords true なら単語単位、false なら書記素単位でトークンを作る。
@@ -131,5 +163,6 @@ export function parseText(text: string | null | undefined, dividesByWords: boole
     }
     tokens.push({ start, end: runs.length });
   }
+  resolveQuotationMarkFonts(runs);
   return { runs, tokens };
 }

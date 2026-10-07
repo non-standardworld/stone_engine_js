@@ -97,6 +97,31 @@ describe("layout tbRl", () => {
     expect(lines(lay("あいうえお‼か", { direction: "tbRl" }, { height: 50 }))).toEqual(["あいうえ", "お‼か"]);
   });
 
+  it("sets quotation marks in Japanese text upright in full-width columns, and rotates those of latin words", () => {
+    // 和文中の引用符は全角の縦組み用グリフ（〝〟の形）で 1em。欧文として回転すると送りが約 0.4em に詰まる
+    const ctx = lay("あ“い”う‘え’お", { direction: "tbRl" });
+    ctx.runs.forEach((run, i) => {
+      expect(ctx.isClockwise(run)).toBe(false);
+      expect(ctx.usesVerticalGlyph(run)).toBe(true);
+      expect(ctx.usesFullWidthGlyph(run)).toBe(i % 2 === 1);
+      expect(run.advance).toBe(10);
+      expect(run.frame).toEqual({ x: 0, y: i * 10, width: 10, height: 10 });
+    });
+    // 欧文の単語の引用符とアポストロフィは、今までどおり欧文として回転する
+    const latin = lay("“Hi” it’s", { direction: "tbRl" });
+    for (const char of ["“", "”", "’"]) {
+      const { run } = runOf(latin, char);
+      expect(latin.isClockwise(run)).toBe(true);
+      expect(latin.usesFullWidthGlyph(run)).toBe(false);
+      expect(run.frame.height).toBeCloseTo(5.225);
+    }
+    // 列の残りが 1em に満たなければ次の列へ送る（プロポーショナルな字形の幅で判定すると列からはみ出して隠れる）
+    const short = lay("ab“", { direction: "tbRl" }, { height: 20 });
+    expect(lines(short)).toEqual(["ab", "“"]);
+    expect(shown(short)).toBe("ab“");
+    expect(lines(lay("あいうえ“お”か", { direction: "tbRl" }, { height: 50 }))).toEqual(["あいうえ", "“お”か"]);
+  });
+
   it("does not break inside a run of leaders, dashes or kunojiten", () => {
     for (const pair of ["……", "——", "〳〵"]) {
       const ctx = lay(`あいうえ${pair}か`, { direction: "tbRl" }, { height: 50 });

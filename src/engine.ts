@@ -14,11 +14,17 @@ export interface LayoutSize {
   height?: number;
 }
 
-/** runs の送り幅を現在の adjustFontSize で計測して埋める。 */
+/**
+ * runs の送り幅を現在の adjustFontSize で計測して埋める。
+ * 全角の字形で描く run（縦書きの和文の引用符）は、計測（canvas は fwid を反映しない）によらず全角（1em）にする。
+ */
 export function measureRuns(ctx: StoneContext): void {
   const size = ctx.adjustFontSize;
+  const fm = ctx.fontManager;
   for (const run of ctx.runs) {
-    run.advance = run.isNewline ? 0 : ctx.fontManager.advance(run.fontId, size, run.char);
+    if (run.isNewline) run.advance = 0;
+    else if (ctx.usesFullWidthGlyph(run)) run.advance = fm.scaledSize(run.fontId, size);
+    else run.advance = fm.advance(run.fontId, size, run.char);
   }
 }
 

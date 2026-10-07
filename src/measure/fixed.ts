@@ -66,6 +66,7 @@ export function isFullWidthCodePoint(cp: number): boolean {
   // 和文として扱う一般句読点（「—」「―」「‥」「…」「‼」「※」「†」「‰」など）。和文フォントでは全角で、「…」は欧文フォントでも
   // ほぼ 1em（切り詰めでは欧文の run のフォントで省略記号の幅を測る）
   if (isJapanesePunctuationCodePoint(cp)) return true;
+  // 引用符「“」「”」「‘」「’」は半角のまま（和文フォントでもプロポーショナルな字形。縦書きで全角の字形にする和文の引用符は measureRuns が 1em にする）
   const category = unicodeCategoryOf(cp);
   return category !== null && FULL_WIDTH_CATEGORIES.has(category);
 }

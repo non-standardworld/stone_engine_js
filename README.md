@@ -95,7 +95,7 @@ SVG の中の 1 文字は `data-run`（run ID）を持つ `<tspan>` です。文
 | `allowsTateChuYoko` | `true` | 縦書きで 2 桁以下の数字を正体にする |
 | `adjustsFontSizeToFitWidth` / `minimumScaleFactor` | `false` / `0` | 収まらないときにフォントを縮小する |
 | `fonts` | | 文字種（`latin` / `japanese` / `emoji`）ごとの `{ family, scale, weight, style, ascent, descent }` |
-| `width` / `height` | 横書き `"container"` / `"auto"`、縦書き `"auto"` / `"auto"` | レイアウト領域。数値（px）、`"auto"`（制限なし）、`"container"`（コンポーネントの大きさ） |
+| `width` / `height` | 横書き `"container"` / `"auto"`、縦書き `"auto"` / `"auto"` | レイアウト領域。数値（px）、`"auto"`（制限なし）、`"container"`（コンポーネントの大きさ）。行送り方向（横書きは高さ、縦書きは幅）に収まらない行は表示せず、続きがあるときは最後に表示する文字を省略記号（横書き `…`、縦書き `︙`）にする |
 | `color` | `currentColor` | 文字色 |
 | `showFrames` | `false` | 各文字の占有矩形を描く（デバッグ用） |
 | `fallback` | `"text"` | レイアウト前の表示 |

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { svgString } from "../src/index.js";
-import { lay, lines, runOf } from "./helpers.js";
+import { lay, lines, runOf, shown } from "./helpers.js";
 
 describe("layout tbRl", () => {
   it("lays out columns top to bottom, right to left", () => {
@@ -114,5 +114,60 @@ describe("layout tbRl", () => {
     expect(svg).toContain("font-feature-settings");
     expect((svg.match(/<text /g) ?? []).length).toBe(1);
     expect(svg).toContain('data-run="0"');
+  });
+});
+
+describe("truncation tbRl", () => {
+  it("hides a partly visible column and puts a single ellipsis at the end of the last full column", () => {
+    // 2 列目は 2px（幅 12）/ 9px（幅 19）だけ見えるが、一部しか見えない列は描かない
+    for (const width of [12, 19]) {
+      const ctx = lay("あいうえおかきくけこ", { direction: "tbRl" }, { width, height: 55 });
+      expect(shown(ctx)).toBe("あいうえ…");
+      expect(ctx.isTruncated).toBe(true);
+      expect(svgString(ctx).match(/︙/g)).toHaveLength(1);
+    }
+  });
+
+  it("puts the ellipsis on the character before a newline", () => {
+    const ctx = lay("あ\nい", { direction: "tbRl" }, { width: 10 });
+    expect(ctx.runs.map((r) => r.visibility)).toEqual(["ellipsis", "invisible", "invisible"]);
+  });
+
+  it("puts the ellipsis on the first digit of a tate-chu-yoko", () => {
+    // 1 列目の最後が縦中横の「12」なので、2 桁目ではなく縦中横の先頭を省略記号にする
+    const ctx = lay("あいうえ12かき", { direction: "tbRl", dividesByWords: true }, { width: 11, height: 51 });
+    expect(lines(ctx)).toEqual(["あいうえ12", "かき"]);
+    expect(runOf(ctx, "1").run.visibility).toBe("ellipsis");
+    expect(shown(ctx)).toBe("あいうえ…");
+  });
+
+  it("does not truncate a tate-chu-yoko wider than 1em in the leftmost column", () => {
+    // 2 桁で 10.45px の縦中横。中央寄せではみ出す分も含めて寄せるので、大きさを制限しなければ切り詰めない
+    const ctx = lay("あ12い", { direction: "tbRl", dividesByWords: true });
+    expect(ctx.isTruncated).toBe(false);
+    expect(Math.min(...ctx.runs.map((r) => r.frame.x))).toBeCloseTo(0);
+  });
+
+  it("aligns only the columns that fit with directionAlign middle and end", () => {
+    // 2 列目は収まらないので 1 列目だけを中央・左に寄せる（隠れる列は常に末尾側）
+    const middle = lay("あいうえおかきくけこ", { direction: "tbRl", directionAlign: "middle" }, { width: 15, height: 55 });
+    expect(middle.runs[0].frame.x).toBe(2.5);
+    expect(shown(middle)).toBe("あいうえ…");
+    const end = lay("あいうえおかきくけこ", { direction: "tbRl", directionAlign: "end" }, { width: 15, height: 55 });
+    expect(end.runs[0].frame.x).toBe(0);
+    expect(shown(end)).toBe("あいうえ…");
+  });
+
+  it("shrinks vertical text that has a newline until every column fits", () => {
+    // 改行の矩形の幅が縮小前のフォントサイズ（20px）のままだと、1 列目が左にずれて 2 列目がはみ出していた
+    const ctx = lay(
+      "あいうえ\nか",
+      { direction: "tbRl", fontSize: 20, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 },
+      { width: 22, height: 44 },
+    );
+    expect(ctx.isTruncated).toBe(false);
+    expect(shown(ctx)).toBe("あいうえ\nか");
+    const first = ctx.runs[0].frame;
+    expect(first.x + first.width).toBeCloseTo(22); // 1 列目は右端にそろう
   });
 });

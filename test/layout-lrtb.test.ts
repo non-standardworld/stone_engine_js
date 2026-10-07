@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { lay, lines, runOf } from "./helpers.js";
+import { svgString } from "../src/index.js";
+import { lay, lines, runOf, shown } from "./helpers.js";
 
 describe("layout lrTb", () => {
   it("wraps at the given width and lays out lines top to bottom", () => {
@@ -200,6 +201,74 @@ describe("truncation", () => {
     expect(ctx.adjustFontScale).toBeGreaterThanOrEqual(0.5);
     expect(ctx.adjustFontScale).toBeLessThanOrEqual(0.55);
     expect(ctx.runs[0].frame.width).toBeCloseTo(20 * ctx.adjustFontScale);
+  });
+
+  it("hides a partly visible line and puts a single ellipsis at the end of the last full line", () => {
+    // 2 行目は 2px（高さ 12）/ 9px（高さ 19）だけ見えるが、一部しか見えない行は描かない
+    for (const height of [12, 19]) {
+      const ctx = lay("あいうえおかきくけこ", {}, { width: 55, height });
+      expect(shown(ctx)).toBe("あいうえ…");
+      expect(ctx.isTruncated).toBe(true);
+      expect(svgString(ctx).match(/…/g)).toHaveLength(1);
+    }
+  });
+
+  it("puts the ellipsis on the character before a newline", () => {
+    const ctx = lay("あ\nい", {}, { height: 10 });
+    expect(ctx.runs.map((r) => r.visibility)).toEqual(["ellipsis", "invisible", "invisible"]);
+    expect(svgString(ctx).match(/…/g)).toHaveLength(1);
+  });
+
+  it("skips blank lines at the end of the shown lines when placing the ellipsis", () => {
+    // 空行の 2 行目までは収まるが、省略記号は 1 行目の最後の文字に付け、空行も隠す
+    const ctx = lay("あいう\n\nえお", {}, { height: 20 });
+    expect(shown(ctx)).toBe("あい…");
+  });
+
+  it("does not truncate when only blank lines overflow", () => {
+    const ctx = lay("あいう\n\n", {}, { height: 10 });
+    expect(shown(ctx)).toBe("あいう\n");
+    expect(ctx.runs[4].visibility).toBe("invisible"); // はみ出した空行の改行
+    expect(ctx.isTruncated).toBe(false);
+  });
+
+  it("shows nothing when not even the first line fits", () => {
+    const ctx = lay("あいう", {}, { height: 9 });
+    expect(shown(ctx)).toBe("");
+    expect(ctx.isTruncated).toBe(true);
+  });
+
+  it("hides a line whose glyph is wider than the area", () => {
+    const ctx = lay("あい", {}, { width: 8, height: 100 });
+    expect(shown(ctx)).toBe("");
+    expect(ctx.isTruncated).toBe(true);
+    const fit = lay("あい", { adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 }, { width: 8, height: 100 });
+    expect(fit.isTruncated).toBe(false);
+    expect(shown(fit)).toBe("あい");
+  });
+
+  it("aligns only the lines that fit with directionAlign middle and end", () => {
+    // 2 行目は収まらないので 1 行目だけを中央・下に寄せる（隠れる行は常に末尾側）
+    const middle = lay("あいうえおかきくけこ", { directionAlign: "middle" }, { width: 55, height: 15 });
+    expect(middle.runs[0].frame.y).toBe(2.5);
+    expect(shown(middle)).toBe("あいうえ…");
+    const end = lay("あいうえおかきくけこ", { directionAlign: "end" }, { width: 55, height: 15 });
+    expect(end.runs[0].frame.y).toBe(5);
+    expect(shown(end)).toBe("あいうえ…");
+  });
+
+  it("shrinks text that has a newline until every line fits", () => {
+    // 改行の矩形が縮小前のフォントサイズ（20px）のままだと、どこまで縮小しても高さ 17px を超えて切り詰められていた
+    const ctx = lay(
+      "あいうえ\nか",
+      { fontSize: 20, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.4 },
+      { width: 40, height: 17 },
+    );
+    expect(ctx.isTruncated).toBe(false);
+    expect(shown(ctx)).toBe("あいうえ\nか");
+    expect(ctx.adjustFontScale).toBeGreaterThan(0.4);
+    expect(ctx.adjustFontScale).toBeLessThanOrEqual(17 / 40); // 2 行 × 20px × 縮小率 ≤ 17px
+    expect(ctx.runs[4].frame.height).toBeCloseTo(20 * ctx.adjustFontScale);
   });
 });
 

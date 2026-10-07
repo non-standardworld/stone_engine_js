@@ -10,10 +10,20 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
 - 縦書きの均等配置で 1 桁の縦中横トークンの後に送りが進まない問題を修正。
 - directionAlign = middle の横書きで、最初の行のアセント分だけずれる問題を修正。
 - renderedSize の高さは縮小後の行送りで計算する。
+- 切り詰めは行単位にする。先頭の行から領域に完全に収まる行だけを表示し、収まらない最初の行（一部だけ見える行を含む）から後ろは隠す。
+  隠れた文字（改行・空白以外）があれば、表示する最後の文字を省略記号にする（行末の改行・空白や空行は飛ばし、縦中横の途中ならその先頭）。
+  改行・空白だけが隠れたときは省略記号を付けず、isTruncated も false にする。
+  （元実装は「領域と重なり、次の run が収まらない」run を省略記号にしていたため、途中まで見える行の文字がほぼ省略記号になり、
+  改行の run が省略記号になったときは何も描かれなかった。）
+- directionAlign = middle / end で収まらない行があるときは、先頭から収まる行だけを寄せる（隠れる行は常に末尾側になり、省略記号は 1 つ）。
+- 改行の run の矩形は、同じ文字種の文字と同じく縮小後のフォントサイズで作る（元実装は縮小前の fontSize のため、縮小すると行が実際より
+  大きく見積もられて切り詰められたままになり、縦書きでは列が左にずれた）。
+- 縦中横の中央寄せは行送り方向の寄せより前に行う（元実装は寄せた後に中央寄せするため、1em より広い 2 桁の縦中横が左端の列にあると
+  領域の左にはみ出し、大きさを制限していなくても切り詰められた）。
 */
 
 import type { StoneContext } from "./context.js";
-import { isNotEndingChar, isNotStartingChar, isSpaceChar } from "./punctuation.js";
+import { isBlankChar, isNotEndingChar, isNotStartingChar, isSpaceChar } from "./punctuation.js";
 import type { Rect, Run } from "./types.js";
 
 const EPS = 1e-6;
@@ -83,7 +93,7 @@ export class Layouter {
         x: this.x,
         y: this.y - fm.ascent(run.fontId, size),
         width: 0,
-        height: ctx.fontSize,
+        height: size * fm.fontScale(run.fontId),
       };
       return;
     }
@@ -143,7 +153,7 @@ export class Layouter {
 
     if (run.isNewline) {
       run.position = { x: this.x, y: this.y + size - fm.descent(run.fontId, size) };
-      run.frame = { x: this.x, y: this.y, width: ctx.fontSize, height: 0 };
+      run.frame = { x: this.x, y: this.y, width: size, height: 0 };
       return;
     }
 
@@ -406,7 +416,7 @@ export class Layouter {
   /**
    * 行末に連続する空白を幅 0（縦書きは高さ 0）にして寄せの計算から除き、空白を除いた行の終端（run ID + 1）を返す。
    * ブラウザが行末の空白を行幅に含めないのと同じ扱い。幅を 0 にする（領域外へ押し出さない）ので、
-   * 行末の文字が updateVisibility で省略記号扱いになることはない。
+   * 行が updateVisibility で領域からはみ出したとみなされることはない。
    */
   private collapseTrailingSpaces(start: number, end: number): number {
     const runs = this.ctx.runs;
@@ -439,7 +449,31 @@ export class Layouter {
     if (lower !== -1) fn(lower, upper + 1);
   }
 
-  /** 領域に収まらない run を invisible / ellipsis にする。 */
+  /**
+   * 行送り方向の寄せに使う長さ。先頭の行から順に、行送り方向の大きさ limit に収まる行までの長さを返す
+   * （収まらない行は updateVisibility で隠すので寄せに含めない。先頭の行は収まらなくても含める）。
+   * extent(run) は先頭の行の始まりから run の終わりまでの行送り方向の長さ。
+   */
+  private fittingExtent(extent: (run: Run) => number, limit: number): number {
+    const runs = this.ctx.runs;
+    let result = -Infinity;
+    let lineExtent = -Infinity;
+    for (let i = 0; i < runs.length; i++) {
+      lineExtent = Math.max(lineExtent, extent(runs[i]));
+      if (i + 1 < runs.length && runs[i + 1].line === runs[i].line) continue;
+      // 行の終わり
+      if (result !== -Infinity && lineExtent > limit + EPS) break;
+      result = Math.max(result, lineExtent);
+      lineExtent = -Infinity;
+    }
+    return result;
+  }
+
+  /**
+   * 切り詰め。先頭の行から、領域に完全に収まる行だけを表示し、収まらない最初の行とそれ以降の行は隠す（一部だけ見える行も描かない）。
+   * 隠れた run に文字（改行・空白以外）があれば、表示する最後の文字を省略記号にして、その後ろ（行末の改行・空白や空行）も隠す。
+   * 縦中横の途中に当たったときは、その縦中横の先頭を省略記号にする。
+   */
   private updateVisibility(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -448,17 +482,25 @@ export class Layouter {
 
     const contains = (f: Rect): boolean =>
       f.x >= -EPS && f.y >= -EPS && f.x + f.width <= W + EPS && f.y + f.height <= H + EPS;
-    const intersects = (f: Rect): boolean => {
-      if (f.width === 0 || f.height === 0) return contains(f);
-      return f.x < W && f.x + f.width > 0 && f.y < H && f.y + f.height > 0;
-    };
 
+    // 領域からはみ出す最初の run を含む行の先頭（ここから後ろを隠す）
+    let end = runs.findIndex((run) => !contains(run.frame));
+    if (end === -1) end = runs.length;
+    while (end > 0 && end < runs.length && runs[end - 1].line === runs[end].line) end -= 1;
+
+    let hidesText = false;
     for (let i = 0; i < runs.length; i++) {
-      const isShown = intersects(runs[i].frame);
-      const nextIsShown = i < runs.length - 1 ? contains(runs[i + 1].frame) : true;
-      if (isShown && !nextIsShown) runs[i].visibility = "ellipsis";
-      else runs[i].visibility = isShown ? "visible" : "invisible";
+      runs[i].visibility = i < end ? "visible" : "invisible";
+      if (i >= end && !isBlankChar(runs[i].char)) hidesText = true;
     }
+    if (!hidesText) return;
+
+    let last = end - 1;
+    while (last >= 0 && isBlankChar(runs[last].char)) last -= 1;
+    if (last < 0) return;
+    if (ctx.isTateChuYoko(runs[last])) last = ctx.tokens[runs[last].tokenId].start;
+    runs[last].visibility = "ellipsis";
+    for (let i = last + 1; i < end; i++) runs[i].visibility = "invisible";
   }
 
   //--------------------------------------------------------------//
@@ -475,21 +517,21 @@ export class Layouter {
       if (run.line !== 0) break;
       minY = Math.min(minY, run.frame.y);
     }
-    let maxY = -Infinity;
-    for (const run of runs) maxY = Math.max(maxY, run.frame.y + run.frame.height);
-    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return;
+    if (!Number.isFinite(minY)) return;
 
     const H = ctx.renderSize.height;
+    // middle / end で寄せるのは、先頭から高さに収まる行まで
+    const height = this.fittingExtent((run) => run.frame.y + run.frame.height - minY, H);
     let dy: number;
     switch (ctx.directionAlign) {
       case "start":
         dy = -minY;
         break;
       case "middle":
-        dy = Number.isFinite(H) ? (H - (maxY - minY)) * 0.5 - minY : -minY;
+        dy = Number.isFinite(H) ? (H - height) * 0.5 - minY : -minY;
         break;
       case "end":
-        dy = Number.isFinite(H) ? H - maxY : -minY;
+        dy = Number.isFinite(H) ? H - height - minY : -minY;
         break;
     }
 
@@ -586,16 +628,18 @@ export class Layouter {
     if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return;
 
     const W = ctx.renderSize.width;
+    // middle / end で寄せるのは、先頭（右）から幅に収まる列まで
+    const fittingMinX = maxX - this.fittingExtent((run) => maxX - run.frame.x, W);
     let dx: number;
     switch (ctx.directionAlign) {
       case "start":
         dx = Number.isFinite(W) ? W - maxX : -minX;
         break;
       case "middle":
-        dx = Number.isFinite(W) ? (W - (maxX - minX)) * 0.5 - minX : -minX;
+        dx = Number.isFinite(W) ? (W - (maxX - fittingMinX)) * 0.5 - fittingMinX : -minX;
         break;
       case "end":
-        dx = -minX;
+        dx = -fittingMinX;
         break;
     }
 
@@ -699,8 +743,9 @@ export class Layouter {
 
   /** 縦書きの後処理。 */
   private postLayoutTbRl(): void {
-    this.shiftPositionTbRl();
+    // 縦中横の中央寄せは寄せより前に行う（1em より広い縦中横のはみ出しも含めて寄せる）
     this.applyTateChuYokoTbRl();
+    this.shiftPositionTbRl();
     this.forEachLine((start, end) => this.alignLineTbRl(start, end));
     this.updateRenderedSizeTbRl();
     this.updateVisibility();

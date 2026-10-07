@@ -15,32 +15,28 @@ export interface ParseResult {
 }
 
 type SegmenterLike = { segment(input: string): Iterable<{ segment: string }> };
+type Granularity = "word" | "grapheme";
 
-let wordSegmenter: SegmenterLike | null | undefined;
-let graphemeSegmenter: SegmenterLike | null | undefined;
+const segmenters = new Map<Granularity, SegmenterLike | null>();
 
-/** 単語分割用の Intl.Segmenter（無ければ null）。 */
-function getWordSegmenter(): SegmenterLike | null {
-  if (wordSegmenter !== undefined) return wordSegmenter;
+/** 指定した単位の Intl.Segmenter（無い環境では null）。一度作ったものを使い回す。 */
+function getSegmenter(granularity: Granularity): SegmenterLike | null {
+  const cached = segmenters.get(granularity);
+  if (cached !== undefined) return cached;
+  let segmenter: SegmenterLike | null = null;
   try {
     const Seg = (Intl as unknown as { Segmenter?: new (locale: string, opts: object) => SegmenterLike }).Segmenter;
-    wordSegmenter = Seg ? new Seg("ja", { granularity: "word" }) : null;
+    if (Seg) segmenter = new Seg("ja", { granularity });
   } catch {
-    wordSegmenter = null;
+    segmenter = null;
   }
-  return wordSegmenter;
+  segmenters.set(granularity, segmenter);
+  return segmenter;
 }
 
-/** 書記素分割用の Intl.Segmenter（無ければ null）。 */
-function getGraphemeSegmenter(): SegmenterLike | null {
-  if (graphemeSegmenter !== undefined) return graphemeSegmenter;
-  try {
-    const Seg = (Intl as unknown as { Segmenter?: new (locale: string, opts: object) => SegmenterLike }).Segmenter;
-    graphemeSegmenter = Seg ? new Seg("ja", { granularity: "grapheme" }) : null;
-  } catch {
-    graphemeSegmenter = null;
-  }
-  return graphemeSegmenter;
+/** Intl.Segmenter で分割した文字列の配列。 */
+function segment(segmenter: SegmenterLike, text: string): string[] {
+  return Array.from(segmenter.segment(text), (s) => s.segment);
 }
 
 const MARK_RE = /^\p{M}$/u;
@@ -78,26 +74,20 @@ function fallbackGraphemes(text: string): string[] {
 /** 書記素クラスタに分割する。 */
 export function splitGraphemes(text: string): string[] {
   if (text.length === 0) return [];
-  const seg = getGraphemeSegmenter();
-  if (!seg) return fallbackGraphemes(text);
-  const out: string[] = [];
-  for (const s of seg.segment(text)) out.push(s.segment);
-  return out;
+  const segmenter = getSegmenter("grapheme");
+  return segmenter ? segment(segmenter, text) : fallbackGraphemes(text);
 }
 
 /** 単語（と、単語の間の句読点・空白・改行）に分割する。Intl.Segmenter が無い環境では書記素分割にフォールバックする。 */
 export function splitWords(text: string): string[] {
   if (text.length === 0) return [];
-  const seg = getWordSegmenter();
-  if (!seg) return splitGraphemes(text);
-  const out: string[] = [];
-  for (const s of seg.segment(text)) out.push(s.segment);
-  return out;
+  const segmenter = getSegmenter("word");
+  return segmenter ? segment(segmenter, text) : splitGraphemes(text);
 }
 
 /** Intl.Segmenter による単語分割が使えるかどうか。 */
 export function supportsWordSegmentation(): boolean {
-  return getWordSegmenter() !== null;
+  return getSegmenter("word") !== null;
 }
 
 /** 1 書記素の Run を作る。改行は直前の run のフォントを引き継ぐ。 */

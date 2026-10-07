@@ -20,7 +20,13 @@ import {
 import { resolveLayoutSize, StoneTextController, type SizeSpec } from "../controller.js";
 import type { StoneContext } from "../context.js";
 import { handleStoneCopy } from "../render/copy.js";
-import { glyphParagraphs, svgOverflow, svgSize, VERTICAL_FEATURE_SETTINGS } from "../render/svg.js";
+import {
+  DEFAULT_FRAME_COLOR,
+  glyphParagraphs,
+  svgOverflow,
+  svgSize,
+  VERTICAL_FEATURE_SETTINGS,
+} from "../render/svg.js";
 import { resolveFonts } from "../fonts.js";
 import type { FontMeasurer, Size, StoneOptions } from "../types.js";
 
@@ -141,7 +147,7 @@ export function StoneSVG({
   layout,
   color = "currentColor",
   showFrames = false,
-  frameColor = "rgba(0, 128, 255, 0.6)",
+  frameColor = DEFAULT_FRAME_COLOR,
   style,
   onCopy,
   ...rest

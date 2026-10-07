@@ -59,6 +59,12 @@ function adjust(ctx: StoneContext): void {
   if (!isAdjusted) layoutWithScale(ctx, minScale);
 }
 
+/** adjustsFontSizeToFitWidth なら収まるまで縮小し、そうでなければ等倍でレイアウトする。 */
+function layoutToFit(ctx: StoneContext): void {
+  if (ctx.adjustsFontSizeToFitWidth) adjust(ctx);
+  else layoutWithScale(ctx, 1);
+}
+
 /**
  * テキストをレイアウトする。
  * @param text 対象テキスト
@@ -79,18 +85,14 @@ export function layoutText(
   ctx.tokens = parsed.tokens;
   ctx.lineCount = 0;
   ctx.adjustFontScale = 1;
-
-  if (ctx.adjustsFontSizeToFitWidth) adjust(ctx);
-  else layoutWithScale(ctx, 1);
-
+  layoutToFit(ctx);
   return ctx;
 }
 
 /** 既存のコンテキストを別のサイズでレイアウトし直す（Swift 版 layoutThatFits）。 */
 export function relayout(ctx: StoneContext, size: LayoutSize): StoneContext {
   ctx.renderSize = normalizeSize(size);
-  if (ctx.adjustsFontSizeToFitWidth) adjust(ctx);
-  else layoutWithScale(ctx, 1);
+  layoutToFit(ctx);
   return ctx;
 }
 

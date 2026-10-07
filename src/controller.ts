@@ -28,6 +28,9 @@ export interface ControllerOptions {
   onLayout: (ctx: StoneContext) => void;
 }
 
+/** resolveLayoutSize で、コンテナの大きさがまだ分からないことを表す。 */
+const PENDING = Symbol("pending");
+
 /**
  * レイアウト領域を決める。"container" が必要なのにまだ計測できていなければ null。
  * 既定値: 横書きは幅 "container"・高さ "auto"、縦書きは幅 "auto"・高さ "auto"。
@@ -52,8 +55,6 @@ export function resolveLayoutSize(
   if (rw === PENDING || rh === PENDING) return null;
   return { width: rw, height: rh };
 }
-
-const PENDING = Symbol("pending");
 
 export class StoneTextController {
   private readonly measurer: FontMeasurer | null;

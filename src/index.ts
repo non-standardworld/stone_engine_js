@@ -24,6 +24,7 @@ export {
   isNotEndingChar,
   isNotStartingChar,
   isNumberChar,
+  isSpaceChar,
   punctuationOf,
 } from "./punctuation.js";
 export {

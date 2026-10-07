@@ -270,31 +270,38 @@ export class StoneContext {
     };
   }
 
-  /** 横書きで点に最も近い文字位置を求める。 */
-  private closestRunIndexH(point: Point, range: [number, number] | null): number {
+  /**
+   * 点に最も近い文字位置（run ID。文字の後半なら +1）。カーソル位置の決定に使う。
+   * 行送り方向で最も近い行を選び、その前後 1 行の文字の前半・後半（横書きなら左右、縦書きなら上下）から最も近いものを採る。
+   * Swift 版の closestRunIndexH / closestRunIndexV を、軸だけを入れ替える 1 つの実装にまとめたもの。
+   */
+  closestRunIndex(point: Point, range: [number, number] | null = null): number {
+    if (this.runs.length === 0) return 0;
+    const horizontal = this.direction === "lrTb";
     const isAll = range === null;
     const [lo, hi] = this.clampRange(range);
 
+    // 行送り方向での、点と行の中心の距離
+    const lineDistance = (line: number): number => {
+      const f = this.firstRunFrame(line);
+      return horizontal ? Math.abs(point.y - (f.y + f.height * 0.5)) : Math.abs(point.x - (f.x + f.width * 0.5));
+    };
+
     // 最も近い行
-    let minDy = Infinity;
+    let minLineDistance = Infinity;
     let line = -1;
     for (let i = lo; i < hi; i++) {
       if (this.runs[i].line === line) continue;
-      const runFrame = this.firstRunFrame(this.runs[i].line);
-      const dy = Math.abs(point.y - (runFrame.y + runFrame.height * 0.5));
-      if (dy >= minDy) continue;
-      minDy = dy;
+      const d = lineDistance(this.runs[i].line);
+      if (d >= minLineDistance) continue;
+      minLineDistance = d;
       line = this.runs[i].line;
     }
     if (line === -1) line = 0;
 
-    if (isAll && this.isNewlineAt(hi) && line < this.lineCount) {
-      const runFrame = this.firstRunFrame(this.lineCount - 1);
-      const dy = Math.abs(point.y - (runFrame.y + runFrame.height * 0.5));
-      if (dy < minDy) {
-        minDy = dy;
-        line = this.lineCount - 1;
-      }
+    // 改行で終わっていれば、その後ろの空の最終行も候補にする
+    if (isAll && this.isNewlineAt(hi) && line < this.lineCount && lineDistance(this.lineCount - 1) < minLineDistance) {
+      line = this.lineCount - 1;
     }
 
     // 最も近い run
@@ -310,88 +317,31 @@ export class StoneContext {
           minDistance = d;
           index = i;
         }
-      } else {
-        const first: Rect = { x: f.x, y: f.y, width: f.width * 0.5, height: f.height };
-        const fd = distance(first, point);
-        if (fd < minDistance) {
-          minDistance = fd;
-          index = i;
-        }
-        const second: Rect = { x: f.x + f.width * 0.5, y: f.y, width: f.width * 0.5, height: f.height };
-        const sd = distance(second, point);
-        if (sd < minDistance) {
-          minDistance = sd;
-          index = i + 1;
-        }
+        continue;
+      }
+      // 前半に近ければその文字の前、後半に近ければ後ろ
+      const [first, second]: [Rect, Rect] = horizontal
+        ? [
+            { x: f.x, y: f.y, width: f.width * 0.5, height: f.height },
+            { x: f.x + f.width * 0.5, y: f.y, width: f.width * 0.5, height: f.height },
+          ]
+        : [
+            { x: f.x, y: f.y, width: f.width, height: f.height * 0.5 },
+            { x: f.x, y: f.y + f.height * 0.5, width: f.width, height: f.height * 0.5 },
+          ];
+      const fd = distance(first, point);
+      if (fd < minDistance) {
+        minDistance = fd;
+        index = i;
+      }
+      const sd = distance(second, point);
+      if (sd < minDistance) {
+        minDistance = sd;
+        index = i + 1;
       }
     }
     if (minDistance === Infinity) index = this.runs.length;
     return index;
-  }
-
-  /** 縦書きで点に最も近い文字位置を求める。 */
-  private closestRunIndexV(point: Point, range: [number, number] | null): number {
-    const isAll = range === null;
-    const [lo, hi] = this.clampRange(range);
-
-    let minDx = Infinity;
-    let line = -1;
-    for (let i = lo; i < hi; i++) {
-      if (this.runs[i].line === line) continue;
-      const runFrame = this.firstRunFrame(this.runs[i].line);
-      const dx = Math.abs(point.x - (runFrame.x + runFrame.width * 0.5));
-      if (dx >= minDx) continue;
-      minDx = dx;
-      line = this.runs[i].line;
-    }
-    if (line === -1) line = 0;
-
-    if (isAll && this.isNewlineAt(hi) && line < this.lineCount) {
-      const runFrame = this.firstRunFrame(this.lineCount - 1);
-      const dx = Math.abs(point.x - (runFrame.x + runFrame.width * 0.5));
-      if (dx < minDx) {
-        minDx = dx;
-        line = this.lineCount - 1;
-      }
-    }
-
-    let minDistance = Infinity;
-    let index = 0;
-    for (let i = lo; i < hi; i++) {
-      const run = this.runs[i];
-      if (run.line < line - 1 || run.line > line + 1) continue;
-      const f = run.frame;
-      if (run.isNewline) {
-        const d = distance(f, point);
-        if (d < minDistance) {
-          minDistance = d;
-          index = i;
-        }
-      } else {
-        const first: Rect = { x: f.x, y: f.y, width: f.width, height: f.height * 0.5 };
-        const fd = distance(first, point);
-        if (fd < minDistance) {
-          minDistance = fd;
-          index = i;
-        }
-        const second: Rect = { x: f.x, y: f.y + f.height * 0.5, width: f.width, height: f.height * 0.5 };
-        const sd = distance(second, point);
-        if (sd < minDistance) {
-          minDistance = sd;
-          index = i + 1;
-        }
-      }
-    }
-    if (minDistance === Infinity) index = this.runs.length;
-    return index;
-  }
-
-  /** 点に最も近い文字位置（run ID。文字の後半なら +1）。カーソル位置の決定に使う。 */
-  closestRunIndex(point: Point, range: [number, number] | null = null): number {
-    if (this.runs.length === 0) return 0;
-    return this.direction === "lrTb"
-      ? this.closestRunIndexH(point, range)
-      : this.closestRunIndexV(point, range);
   }
 
   /** 点を含む run の ID。無ければ null。 */

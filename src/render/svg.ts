@@ -11,6 +11,7 @@ Swift 版は CoreText でグリフを直接描いていたが、Web ではブラ
 */
 
 import type { StoneContext } from "../context.js";
+import { isSpaceChar } from "../punctuation.js";
 import type { Run, Size } from "../types.js";
 
 /** 横書きの省略記号 (U+2026)。 */
@@ -20,6 +21,9 @@ export const VERTICAL_ELLIPSIS = "︙";
 
 /** 縦組み用グリフを有効にする CSS 値。 */
 export const VERTICAL_FEATURE_SETTINGS = '"vert" 1, "vrt2" 1';
+
+/** showFrames で描く矩形の既定の色。 */
+export const DEFAULT_FRAME_COLOR = "rgba(0,128,255,0.6)";
 
 export interface GlyphElement {
   runId: number;
@@ -59,8 +63,6 @@ export interface GlyphParagraph {
   groups: GlyphGroup[];
 }
 
-const WHITESPACE_RE = /^\s+$/u;
-
 /** run を描画要素にする。text は実際に描く文字列。 */
 function toGlyphElement(ctx: StoneContext, runId: number, text: string): GlyphElement {
   const run = ctx.runs[runId];
@@ -96,7 +98,7 @@ export function glyphElements(ctx: StoneContext): GlyphElement[] {
     if (run.isNewline) continue;
     if (run.visibility === "ellipsis") {
       elements.push(toGlyphElement(ctx, i, ellipsisOf(ctx)));
-    } else if (!WHITESPACE_RE.test(run.char)) {
+    } else if (!isSpaceChar(run.char)) {
       elements.push(toGlyphElement(ctx, i, run.char));
     }
   }
@@ -229,7 +231,7 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
   parts.push(`<svg ${attrs.join(" ")}>`);
 
   if (options.showFrames) {
-    parts.push(`<g fill="none" stroke="${escapeAttr(options.frameColor ?? "rgba(0,128,255,0.6)")}" stroke-width="1">`);
+    parts.push(`<g fill="none" stroke="${escapeAttr(options.frameColor ?? DEFAULT_FRAME_COLOR)}" stroke-width="1">`);
     for (const run of ctx.runs) {
       if (run.visibility === "invisible") continue;
       const f = run.frame;

@@ -13,21 +13,34 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
 */
 
 import type { StoneContext } from "./context.js";
-import { isNotEndingChar, isNotStartingChar } from "./punctuation.js";
+import { isNotEndingChar, isNotStartingChar, isSpaceChar } from "./punctuation.js";
 import type { Rect, Run } from "./types.js";
 
 const EPS = 1e-6;
 
-/** 矩形を平行移動した新しい矩形を返す。 */
-function shiftRect(rect: Rect, dx: number, dy: number): Rect {
-  return { x: rect.x + dx, y: rect.y + dy, width: rect.width, height: rect.height };
+/** run の位置と矩形を同じだけ平行移動する。 */
+function moveRun(run: Run, dx: number, dy: number): void {
+  run.position = { x: run.position.x + dx, y: run.position.y + dy };
+  run.frame = { x: run.frame.x + dx, y: run.frame.y + dy, width: run.frame.width, height: run.frame.height };
 }
-
-const WHITESPACE_RE = /^\s+$/u;
 
 /** 改行以外の空白の run かどうか。 */
 function isSpaceRun(run: Run): boolean {
-  return !run.isNewline && WHITESPACE_RE.test(run.char);
+  return !run.isNewline && isSpaceChar(run.char);
+}
+
+/** stone モード: 「」「」「「」「・「」のように、前が約物なら後ろの始め括弧を半角にする。 */
+function halvesOpeningAfterPunctuation(run: Run, prev: Run | undefined): boolean {
+  return run.punctuation === "secondHalf" && prev !== undefined && prev.punctuation !== "whole";
+}
+
+/** stone モード: 「。」」「」・」のように、後ろが約物なら終わり括弧・句読点を半角にする。 */
+function halvesClosingBeforePunctuation(run: Run, next: Run | undefined): boolean {
+  return (
+    run.punctuation === "firstHalf" &&
+    next !== undefined &&
+    (next.punctuation === "firstHalf" || next.punctuation === "quarter")
+  );
 }
 
 export class Layouter {
@@ -97,32 +110,15 @@ export class Layouter {
             break;
         }
         break;
-      case "stone": {
-        if (runId > 0) {
-          const prev = runs[runId - 1];
-          // 「」「」「「」「・「」のように、前が約物なら後ろの始め括弧を半角にする
-          if (
-            run.punctuation === "secondHalf" &&
-            (prev.punctuation === "firstHalf" ||
-              prev.punctuation === "secondHalf" ||
-              prev.punctuation === "quarter")
-          ) {
-            posX = this.x - run.advance * 0.5;
-            width = run.advance * 0.5;
-          }
+      case "stone":
+        if (halvesOpeningAfterPunctuation(run, runs[runId - 1])) {
+          posX = this.x - run.advance * 0.5;
+          width = run.advance * 0.5;
         }
-        if (runId + 1 < runs.length) {
-          const next = runs[runId + 1];
-          // 「。」」「」・」のように、後ろが約物なら終わり括弧・句読点を半角にする
-          if (
-            run.punctuation === "firstHalf" &&
-            (next.punctuation === "firstHalf" || next.punctuation === "quarter")
-          ) {
-            width = run.advance * 0.5;
-          }
+        if (halvesClosingBeforePunctuation(run, runs[runId + 1])) {
+          width = run.advance * 0.5;
         }
         break;
-      }
     }
 
     run.position = { x: posX, y: this.y };
@@ -179,30 +175,15 @@ export class Layouter {
             break;
         }
         break;
-      case "stone": {
-        if (runId > 0) {
-          const prev = runs[runId - 1];
-          if (
-            run.punctuation === "secondHalf" &&
-            (prev.punctuation === "firstHalf" ||
-              prev.punctuation === "secondHalf" ||
-              prev.punctuation === "quarter")
-          ) {
-            posY -= size * 0.5;
-            height = size * 0.5;
-          }
+      case "stone":
+        if (halvesOpeningAfterPunctuation(run, runs[runId - 1])) {
+          posY -= size * 0.5;
+          height = size * 0.5;
         }
-        if (runId + 1 < runs.length) {
-          const next = runs[runId + 1];
-          if (
-            run.punctuation === "firstHalf" &&
-            (next.punctuation === "firstHalf" || next.punctuation === "quarter")
-          ) {
-            height = size * 0.5;
-          }
+        if (halvesClosingBeforePunctuation(run, runs[runId + 1])) {
+          height = size * 0.5;
         }
         break;
-      }
     }
 
     run.position = { x: this.x, y: posY };
@@ -235,8 +216,7 @@ export class Layouter {
         first.position = { x: first.position.x - dx, y: first.position.y };
         first.frame = { ...first.frame, width: first.advance * 0.5 };
         for (let i = this.lineStartRunId + 1; i <= this.runId && i < runs.length; i++) {
-          runs[i].position = { x: runs[i].position.x - dx, y: runs[i].position.y };
-          runs[i].frame = shiftRect(runs[i].frame, -dx, 0);
+          moveRun(runs[i], -dx, 0);
         }
       }
 
@@ -268,8 +248,7 @@ export class Layouter {
         first.position = { x: first.position.x, y: first.position.y - dy };
         first.frame = { ...first.frame, height: size * 0.5 };
         for (let i = this.lineStartRunId + 1; i <= this.runId && i < runs.length; i++) {
-          runs[i].position = { x: runs[i].position.x, y: runs[i].position.y - dy };
-          runs[i].frame = shiftRect(runs[i].frame, 0, -dy);
+          moveRun(runs[i], 0, -dy);
         }
       }
 
@@ -515,8 +494,7 @@ export class Layouter {
     }
 
     for (const run of runs) {
-      run.position = { x: run.position.x, y: run.position.y + dy };
-      run.frame = shiftRect(run.frame, 0, dy);
+      moveRun(run, 0, dy);
     }
   }
 
@@ -539,14 +517,12 @@ export class Layouter {
         break;
       case "center":
         for (let i = start; i < end; i++) {
-          runs[i].position = { x: runs[i].position.x + diff * 0.5, y: runs[i].position.y };
-          runs[i].frame = shiftRect(runs[i].frame, diff * 0.5, 0);
+          moveRun(runs[i], diff * 0.5, 0);
         }
         break;
       case "trailing":
         for (let i = start; i < end; i++) {
-          runs[i].position = { x: runs[i].position.x + diff, y: runs[i].position.y };
-          runs[i].frame = shiftRect(runs[i].frame, diff, 0);
+          moveRun(runs[i], diff, 0);
         }
         break;
       case "justify": {
@@ -563,8 +539,7 @@ export class Layouter {
         for (let i = start; i < end; i++) {
           if (i > start && i < contentEnd && this.isJustifiableGap(runs[i - 1], runs[i])) x += gap;
           const dx = x - runs[i].frame.x;
-          runs[i].position = { x: runs[i].position.x + dx, y: runs[i].position.y };
-          runs[i].frame = shiftRect(runs[i].frame, dx, 0);
+          moveRun(runs[i], dx, 0);
           x += runs[i].frame.width;
         }
         break;
@@ -625,8 +600,7 @@ export class Layouter {
     }
 
     for (const run of runs) {
-      run.position = { x: run.position.x + dx, y: run.position.y };
-      run.frame = shiftRect(run.frame, dx, 0);
+      moveRun(run, dx, 0);
     }
   }
 
@@ -640,8 +614,7 @@ export class Layouter {
       for (let i = token.start; i < token.end; i++) total += runs[i].advance;
       const dx = (ctx.adjustFontSize - total) * 0.5;
       for (let i = token.start; i < token.end; i++) {
-        runs[i].position = { x: runs[i].position.x + dx, y: runs[i].position.y };
-        runs[i].frame = shiftRect(runs[i].frame, dx, 0);
+        moveRun(runs[i], dx, 0);
       }
     }
   }
@@ -672,14 +645,12 @@ export class Layouter {
         break;
       case "center":
         for (let i = start; i < end; i++) {
-          runs[i].position = { x: runs[i].position.x, y: runs[i].position.y + diff * 0.5 };
-          runs[i].frame = shiftRect(runs[i].frame, 0, diff * 0.5);
+          moveRun(runs[i], 0, diff * 0.5);
         }
         break;
       case "trailing":
         for (let i = start; i < end; i++) {
-          runs[i].position = { x: runs[i].position.x, y: runs[i].position.y + diff };
-          runs[i].frame = shiftRect(runs[i].frame, 0, diff);
+          moveRun(runs[i], 0, diff);
         }
         break;
       case "justify": {
@@ -695,8 +666,7 @@ export class Layouter {
           const run = runs[i];
           if (i > start && i < contentEnd && this.isJustifiableGapTbRl(runs[i - 1], run)) y += gap;
           const dy = y - run.frame.y;
-          run.position = { x: run.position.x, y: run.position.y + dy };
-          run.frame = shiftRect(run.frame, 0, dy);
+          moveRun(run, 0, dy);
           if (ctx.isTateChuYoko(run)) {
             if (ctx.isLastInToken(run)) y += run.frame.height;
           } else {

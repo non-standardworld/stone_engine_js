@@ -123,6 +123,34 @@ describe("kinsoku", () => {
     }
   });
 
+  it("does not start a line with fullwidth ！，．：；・ (JLREQ cl-04 to cl-07)", () => {
+    // Swift 版の集合は「？!‼」「。.」のように ASCII の「!」「.」を 2 回ずつ書いていて、全角の「！」「．」などが抜けていた
+    for (const mark of Array.from("！，．：；・")) {
+      expect(lines(lay(`あいうえお${mark}か`, { kinsoku: false }, { width: 50 }))).toEqual(["あいうえお", `${mark}か`]);
+      expect(lines(lay(`あいうえお${mark}か`, {}, { width: 50 }))).toEqual(["あいうえ", `お${mark}か`]);
+    }
+    // ASCII の約物も従来どおり
+    for (const mark of Array.from("!?.,:;")) {
+      expect(lines(lay(`あいうえお${mark}か`, {}, { width: 50 }))).toEqual(["あいうえ", `お${mark}か`]);
+    }
+  });
+
+  it("applies the strict rule to the prolonged sound mark, iteration marks and hyphens like small kana", () => {
+    // JLREQ のレベル 4（CSS の line-break: strict）。小書きの仮名は元から行頭禁則
+    for (const mark of Array.from("ーゝゞ‐〜゠–っャ々")) {
+      expect(lines(lay(`あいうえお${mark}か`, {}, { width: 50 }))).toEqual(["あいうえ", `お${mark}か`]);
+    }
+    // 「ュー」と続くときは両方を送る
+    expect(lines(lay("新しいコンピューターを", {}, { width: 70 }))).toEqual(["新しいコン", "ピューターを"]);
+    expect(lines(lay("時々こゝろが動く", {}, { width: 30 }))).toEqual(["時々", "こゝろ", "が動く"]);
+  });
+
+  it("does not start a line with the closing brackets } and ⦆ (JLREQ cl-02)", () => {
+    for (const mark of Array.from("}⦆）｝」")) {
+      expect(lines(lay(`あいうえお${mark}か`, {}, { width: 50 }))).toEqual(["あいうえ", `お${mark}か`]);
+    }
+  });
+
   it("splits a run of leaders that cannot be kept on one line", () => {
     // 1 行に収まらない並びや行の先頭から始まる並びは、手前で改行しても分かれるので、そのまま分ける
     expect(lines(lay(`あ${"…".repeat(7)}`, {}, { width: 50 }))).toEqual(["あ…………", "………"]);

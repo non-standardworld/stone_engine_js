@@ -129,6 +129,23 @@ describe("layout tbRl", () => {
     }
   });
 
+  it("does not start a column with fullwidth ！，．：；・ or the prolonged sound mark", () => {
+    for (const mark of Array.from("！，．：；・ーゝ〜")) {
+      const off = lay(`あいうえお${mark}か`, { direction: "tbRl", kinsoku: false }, { height: 50 });
+      expect(lines(off)).toEqual(["あいうえお", `${mark}か`]);
+      const ctx = lay(`あいうえお${mark}か`, { direction: "tbRl" }, { height: 50 });
+      expect(lines(ctx)).toEqual(["あいうえ", `お${mark}か`]);
+      // 送った「お」は次の列の先頭
+      const o = runOf(ctx, "お").run;
+      expect(o.frame.y).toBe(0);
+      expect(o.frame.x).toBeLessThan(runOf(ctx, "あ").run.frame.x);
+    }
+    expect(lines(lay("新しいコンピューターを", { direction: "tbRl" }, { height: 70 }))).toEqual([
+      "新しいコン",
+      "ピューターを",
+    ]);
+  });
+
   it("can turn tate-chu-yoko off", () => {
     const ctx = lay("あ12", { direction: "tbRl", dividesByWords: true, allowsTateChuYoko: false });
     expect(ctx.isClockwise(runOf(ctx, "1").run)).toBe(true);

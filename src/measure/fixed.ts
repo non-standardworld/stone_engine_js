@@ -3,7 +3,7 @@ measure/fixed.ts — 決定的な固定メトリクスによる計測。テス�
 */
 
 import type { FontMeasurer, FontMetrics, ResolvedFont } from "./../types.js";
-import { unicodeCategoryOf } from "./../unicode.js";
+import { isJapanesePunctuationCodePoint, unicodeCategoryOf } from "./../unicode.js";
 
 export interface FixedMeasurerOptions {
   /** 全角文字の送り幅（em）。既定 1。 */
@@ -63,6 +63,9 @@ export function isFullWidthCodePoint(cp: number): boolean {
   if (cp >= 0xff01 && cp <= 0xff60) return true; // 全角英数・記号
   if (cp >= 0xffe0 && cp <= 0xffe6) return true;
   if (cp >= 0xff61 && cp <= 0xffdc) return false; // 半角カナ・半角ハングル
+  // 和文として扱うダーシ・リーダー（「—」「―」「‥」「…」）。和文フォントでは全角で、「…」は欧文フォントでもほぼ 1em
+  // （切り詰めでは欧文の run のフォントで省略記号の幅を測る）
+  if (isJapanesePunctuationCodePoint(cp)) return true;
   const category = unicodeCategoryOf(cp);
   return category !== null && FULL_WIDTH_CATEGORIES.has(category);
 }
@@ -89,8 +92,7 @@ export class FixedMeasurer implements FontMeasurer {
     if (cp === undefined) return 0;
     if (char === "\n" || char === "\r" || char === "\r\n") return 0;
     if (cp === 0x20 || cp === 0x09) return size * this.spaceWidth;
-    // 全角スペースと省略記号「…」。「…」は欧文フォントでもほぼ 1em（切り詰めで省略記号の幅を測るのに使う）
-    if (cp === 0x3000 || cp === 0x2026) return size * this.fullWidth;
+    if (cp === 0x3000) return size * this.fullWidth;
     if (isFullWidthCodePoint(cp)) return size * this.fullWidth;
     return size * this.halfWidth;
   }

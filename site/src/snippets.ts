@@ -120,7 +120,7 @@ export const PROPS: PropRow[] = [
   { name: "textAlign", def: '"leading"', desc: "leading / center / trailing / justify" },
   { name: "directionAlign", def: '"start"', desc: "行送り方向の寄せ（横書きなら上下、縦書きなら左右）" },
   { name: "punctuationMode", def: '"stone"', desc: "約物の扱い。whole 常に全角、half 常に半角、stone 前後関係で判断" },
-  { name: "kinsoku", def: "true", desc: "行頭・行末禁則" },
+  { name: "kinsoku", def: "true", desc: "行頭・行末禁則と分離禁止（「……」「——」の途中で改行しない）" },
   { name: "dividesByWords", def: "true", desc: "単語の途中で改行しない" },
   { name: "allowsTateChuYoko", def: "true", desc: "縦書きで 2 桁以下の数字を正体にする（縦中横）" },
   { name: "adjustsFontSizeToFitWidth / minimumScaleFactor", def: "false / 0", desc: "収まらないときにフォントを縮小する" },

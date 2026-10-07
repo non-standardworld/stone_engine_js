@@ -19,9 +19,11 @@ export {
 export {
   HORIZONTAL_ELLIPSIS,
   KINSOKU_HANGING,
+  KINSOKU_INSEPARABLE,
   KINSOKU_NOT_ENDING,
   KINSOKU_NOT_STARTING,
   VERTICAL_ELLIPSIS,
+  isInseparablePair,
   isNewlineChar,
   isNotEndingChar,
   isNotStartingChar,
@@ -31,6 +33,7 @@ export {
 } from "./punctuation.js";
 export {
   UNICODE_BLOCKS,
+  isJapanesePunctuationCodePoint,
   notNeedsToClockwiseInTbRl,
   scriptOfChar,
   scriptOfCodePoint,

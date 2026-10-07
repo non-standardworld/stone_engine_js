@@ -46,6 +46,15 @@ describe("layout lrTb", () => {
     expect(run.frame.y).toBeCloseTo(8.8 - 9.5 * 0.9); // 共有ベースラインからアセント分上
     expect(run.position.y).toBe(8.8);
   });
+
+  it("sets dashes and leaders at full width in the Japanese font", () => {
+    // 欧文フォント（スケール 0.95）だと「…」の点がベースラインに下がり、「——」は切れる
+    const ctx = lay("あ……い——う");
+    expect(ctx.runs.map((r) => r.fontId)).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(ctx.runs.map((r) => r.frame.x)).toEqual([0, 10, 20, 30, 40, 50, 60]);
+    expect(ctx.runs.map((r) => r.frame.width)).toEqual([10, 10, 10, 10, 10, 10, 10]);
+    expect(ctx.runs.every((r) => r.position.y === 8.8)).toBe(true);
+  });
 });
 
 describe("kinsoku", () => {
@@ -65,6 +74,24 @@ describe("kinsoku", () => {
     // 「組版」の後ろに来る「。」を行頭にできないので、トークン「組版」ごと次行へ送る
     const ctx = lay("日本語の組版。です", { dividesByWords: true }, { width: 60 });
     expect(lines(ctx)).toEqual(["日本語の", "組版。です"]);
+  });
+
+  it("does not break inside a run of leaders or dashes", () => {
+    // 分離禁止: 「……」「——」の途中では改行せず、並びごと次の行へ送る
+    for (const pair of ["……", "‥‥", "——", "――"]) {
+      expect(lines(lay(`あいうえ${pair}か`, {}, { width: 50 }))).toEqual(["あいうえ", `${pair}か`]);
+    }
+    expect(lines(lay("これはね……そう", { dividesByWords: true }, { width: 50 }))).toEqual(["これはね", "……そう"]);
+    // 行頭禁則の「」」と一緒に送る
+    expect(lines(lay("あいう……」え", {}, { width: 50 }))).toEqual(["あいう", "……」え"]);
+    // kinsoku を切れば分ける
+    expect(lines(lay("あいうえ……か", { kinsoku: false }, { width: 50 }))).toEqual(["あいうえ…", "…か"]);
+  });
+
+  it("splits a run of leaders that cannot be kept on one line", () => {
+    // 1 行に収まらない並びや行の先頭から始まる並びは、手前で改行しても分かれるので、そのまま分ける
+    expect(lines(lay(`あ${"…".repeat(7)}`, {}, { width: 50 }))).toEqual(["あ…………", "………"]);
+    expect(lines(lay("…".repeat(7), {}, { width: 50 }))).toEqual(["……………", "……"]);
   });
 });
 
@@ -153,6 +180,21 @@ describe("alignment", () => {
     expect(b.frame.x).toBeCloseTo(a.frame.x + a.frame.width);
     expect(c.frame.x).toBeCloseTo(b.frame.x + b.frame.width);
     expect(i.frame.x + i.frame.width).toBeCloseTo(40);
+  });
+
+  it("does not open up runs of leaders and dashes", () => {
+    // 「……」「——」の間は空けない（点や線がつながって見えるように）。あ｜…、…｜い、い｜—、—｜う の 4 か所に 5px を配る
+    const ctx = lay("あ……い——うえおか", { textAlign: "justify" }, { width: 75 });
+    expect(lines(ctx)).toEqual(["あ……い——う", "えおか"]);
+    const gap = 5 / 4;
+    const dots = [runOf(ctx, "…", 0).run, runOf(ctx, "…", 1).run];
+    const dashes = [runOf(ctx, "—", 0).run, runOf(ctx, "—", 1).run];
+    expect(dots[0].frame.x).toBeCloseTo(10 + gap);
+    expect(dots[1].frame.x).toBeCloseTo(dots[0].frame.x + 10);
+    expect(dashes[0].frame.x).toBeCloseTo(40 + gap * 3);
+    expect(dashes[1].frame.x).toBeCloseTo(dashes[0].frame.x + 10);
+    const u = runOf(ctx, "う").run;
+    expect(u.frame.x + u.frame.width).toBeCloseTo(75);
   });
 
   it("collapses a trailing space so the last glyph reaches the edge", () => {

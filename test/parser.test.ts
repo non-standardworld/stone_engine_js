@@ -39,6 +39,23 @@ describe("parser", () => {
     expect(runs[2].isNumber).toBe(false);
   });
 
+  it("treats dashes and leaders as Japanese, but not the rest of general punctuation", async () => {
+    const { scriptOfChar, isFullWidthCodePoint } = await import("../src/index.js");
+    // 「—」「―」「‥」「…」は一般句読点のブロックにあるが、和文フォントで組む（縦書きで回転させない）
+    for (const char of ["—", "―", "‥", "…"]) {
+      expect(scriptOfChar(char)).toBe("japanese");
+      expect(fontIdForChar(char)).toBe(1);
+      expect(isFullWidthCodePoint(char.codePointAt(0)!)).toBe(true);
+    }
+    // 欧文の単語の後ろでも和文
+    expect(parseText("Hello…", true).runs.map((r) => r.fontId)).toEqual([0, 0, 0, 0, 0, 1]);
+    // 引用符・ハイフン・ダッシュ（二分）・ビュレットは今までどおり欧文
+    for (const char of ["“", "‐", "–", "•"]) {
+      expect(scriptOfChar(char)).toBeNull();
+      expect(fontIdForChar(char)).toBe(0);
+    }
+  });
+
   it("gives newline runs the previous run's font", () => {
     const { runs } = parseText("あ\nA\n", false);
     expect(runs[1].fontId).toBe(1);

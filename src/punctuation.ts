@@ -42,6 +42,12 @@ export const KINSOKU_NOT_ENDING: ReadonlySet<string> = new Set(
 /** ぶら下げ対象文字。 */
 export const KINSOKU_HANGING: ReadonlySet<string> = new Set(Array.from("、。"));
 
+/**
+ * 分離禁止文字（JIS X 4051 / JLREQ の cl-08 に、JIS のダッシュを U+2015 に対応づける環境の「―」を加えたもの）。
+ * 「……」「——」「〳〵」のように続けて並んだ間では改行せず、均等配置でも空けない。
+ */
+export const KINSOKU_INSEPARABLE: ReadonlySet<string> = new Set(Array.from("—―‥…〳〴〵"));
+
 /** 横書きの省略記号 (U+2026)。 */
 export const HORIZONTAL_ELLIPSIS = "…";
 /** 縦書きの省略記号 (U+FE19 PRESENTATION FORM FOR VERTICAL HORIZONTAL ELLIPSIS)。 */
@@ -55,6 +61,11 @@ export function isNotStartingChar(char: string): boolean {
 /** 行末禁則文字かどうか。 */
 export function isNotEndingChar(char: string): boolean {
   return KINSOKU_NOT_ENDING.has(firstCodePointString(char));
+}
+
+/** a と b が続けて並んだ間が分離禁止（どちらも分離禁止文字）かどうか。 */
+export function isInseparablePair(a: string, b: string): boolean {
+  return KINSOKU_INSEPARABLE.has(firstCodePointString(a)) && KINSOKU_INSEPARABLE.has(firstCodePointString(b));
 }
 
 /** Swift の Character.isNewline と同じ集合: LF, CR, CRLF, VT, FF, NEL, LINE SEPARATOR, PARAGRAPH SEPARATOR。 */

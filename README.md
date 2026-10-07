@@ -87,10 +87,10 @@ SVG の中の 1 文字は `data-run`（run ID）を持つ `<tspan>` です。文
 | `direction` | `"lrTb"` | `"lrTb"` 横書き、`"tbRl"` 縦書き |
 | `fontSize` | `17` | フォントサイズ（px） |
 | `lineHeightScale` | `1` | 行送り（フォントサイズに対する倍率） |
-| `textAlign` | `"leading"` | `leading` / `center` / `trailing` / `justify`。`justify` は最終行と改行で終わる行を除いて行末をそろえる。余白は文字間に均等に配り、欧文の単語の途中は空けない |
+| `textAlign` | `"leading"` | `leading` / `center` / `trailing` / `justify`。`justify` は最終行と改行で終わる行を除いて行末をそろえる。余白は文字間に均等に配り、欧文の単語の途中と「……」「——」の間は空けない |
 | `directionAlign` | `"start"` | 行送り方向の寄せ（横書きなら上下、縦書きなら左右） |
 | `punctuationMode` | `"stone"` | 約物の扱い。`whole` 常に全角、`half` 常に半角、`stone` 前後関係で判断 |
-| `kinsoku` | `true` | 行頭・行末禁則 |
+| `kinsoku` | `true` | 行頭・行末禁則と分離禁止（「……」「——」の途中で改行しない） |
 | `dividesByWords` | `true` | 単語の途中で改行しない |
 | `allowsTateChuYoko` | `true` | 縦書きで 2 桁以下の数字を正体にする |
 | `adjustsFontSizeToFitWidth` / `minimumScaleFactor` | `false` / `0` | 収まらないときにフォントを縮小する |
@@ -101,7 +101,7 @@ SVG の中の 1 文字は `data-run`（run ID）を持つ `<tspan>` です。文
 | `fallback` | `"text"` | レイアウト前の表示 |
 | `onLayout` | | レイアウト結果（`StoneContext`）を受け取る |
 
-`fonts` の既定値は、和文がヒラギノ角ゴ → Noto Sans JP → 游ゴシック、欧文が Helvetica Neue（スケール 0.95）です。和文フォントのアセント／ディセントは仮想ボディに合わせて 0.88 / 0.12 を使い、欧文はブラウザが返すフォントメトリクスを使います。フォントによって上下位置を調整したい場合は `ascent` / `descent` で上書きできます。
+`fonts` の既定値は、和文がヒラギノ角ゴ → Noto Sans JP → 游ゴシック、欧文が Helvetica Neue（スケール 0.95）です。和文フォントのアセント／ディセントは仮想ボディに合わせて 0.88 / 0.12 を使い、欧文はブラウザが返すフォントメトリクスを使います。フォントによって上下位置を調整したい場合は `ascent` / `descent` で上書きできます。ダーシ「—」「―」とリーダー「‥」「…」は、欧文の後ろでも和文フォントで組みます。
 
 ### レイアウト結果を使う
 
@@ -157,7 +157,8 @@ element.addEventListener("copy", (event) => handleStoneCopy(event, layout, eleme
 - 縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの `font-feature-settings` に任せています。
 - `Intl.Segmenter` が無い環境では単語分割が書記素分割にフォールバックします（`dividesByWords: false` 相当）。
 - 元実装の明らかな不具合をいくつか修正しています（禁則の追い出し単位、行頭約物の二重詰め、均等配置の余り、縦書き均等配置での 1 桁縦中横、`directionAlign: middle` のずれ）。詳細は `src/layout.ts` 冒頭のコメントを参照してください。
-- 均等配置（`textAlign: "justify"`）の余白は、トークン（単語）間ではなく文字間に配ります。元実装のようにトークン間にだけ配ると、`dividesByWords` が有効なときに文節ごとに大きな空きができて日本語の本文としては不自然になるためです。欧文の単語の途中（空白を挟まない欧文どうし）と縦中横の途中は空けず、行末の空白は幅 0 にして除きます。
+- 均等配置（`textAlign: "justify"`）の余白は、トークン（単語）間ではなく文字間に配ります。元実装のようにトークン間にだけ配ると、`dividesByWords` が有効なときに文節ごとに大きな空きができて日本語の本文としては不自然になるためです。欧文の単語の途中（空白を挟まない欧文どうし）、縦中横の途中、「……」「——」の間は空けず、行末の空白は幅 0 にして除きます。
+- ダーシ「—」「―」とリーダー「‥」「…」は和文として扱い、縦書きでは回転させずに縦組み用グリフで列の中央に描きます。Swift 版は欧文として扱うため、縦書きでは欧文フォントのまま 90 度回転し、点が列の左寄りに並んで「——」も切れていました。あわせて、分離禁止文字（「—」「―」「‥」「…」「〳」「〴」「〵」）が続く間では改行しません（`kinsoku` が有効なとき）。
 
 ## 開発
 

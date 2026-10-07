@@ -22,10 +22,10 @@ import type { StoneContext } from "../context.js";
 import { handleStoneCopy } from "../render/copy.js";
 import {
   DEFAULT_FRAME_COLOR,
+  fontFeatureSettingsOf,
   glyphParagraphs,
   svgOverflow,
   svgSize,
-  VERTICAL_FEATURE_SETTINGS,
 } from "../render/svg.js";
 import { resolveFonts } from "../fonts.js";
 import type { FontMeasurer, Size, StoneOptions } from "../types.js";
@@ -194,22 +194,25 @@ export function StoneSVG({
       )}
       {paragraphs.map((paragraph, pi) => (
         <text key={pi} xmlSpace="preserve">
-          {paragraph.groups.map((group, gi) => (
-            <tspan
-              key={gi}
-              fontFamily={group.fontFamily}
-              fontSize={group.fontSize}
-              fontWeight={group.fontWeight}
-              fontStyle={group.fontStyle}
-              style={group.vertical ? { fontFeatureSettings: VERTICAL_FEATURE_SETTINGS } : undefined}
-            >
-              {group.glyphs.map((el) => (
-                <tspan key={el.runId} x={el.x} y={el.y} rotate={el.rotate || undefined} data-run={el.runId}>
-                  {el.text}
-                </tspan>
-              ))}
-            </tspan>
-          ))}
+          {paragraph.groups.map((group, gi) => {
+            const features = fontFeatureSettingsOf(group);
+            return (
+              <tspan
+                key={gi}
+                fontFamily={group.fontFamily}
+                fontSize={group.fontSize}
+                fontWeight={group.fontWeight}
+                fontStyle={group.fontStyle}
+                style={features ? { fontFeatureSettings: features } : undefined}
+              >
+                {group.glyphs.map((el) => (
+                  <tspan key={el.runId} x={el.x} y={el.y} rotate={el.rotate || undefined} data-run={el.runId}>
+                    {el.text}
+                  </tspan>
+                ))}
+              </tspan>
+            );
+          })}
         </text>
       ))}
     </svg>

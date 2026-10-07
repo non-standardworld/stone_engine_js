@@ -70,6 +70,19 @@ describe("layout lrTb", () => {
     expect(mark.frame.x).toBeCloseTo(9.5 * 0.55 * 3);
     expect(mark.frame.width).toBe(10);
   });
+
+  it("sets quotation marks in Japanese text in the Japanese font at their own width", () => {
+    // 和文フォント（ヒラギノ）の「“」などはプロポーショナルな字形。FixedMeasurer では半角（スケール 1 で 5.5px）
+    const ctx = lay("あ“い”う");
+    expect(ctx.runs.map((r) => r.fontId)).toEqual([1, 1, 1, 1, 1]);
+    expect(ctx.runs.map((r) => r.frame.x)).toEqual([0, 10, 15.5, 25.5, 31]);
+    expect(ctx.runs.map((r) => r.frame.width)).toEqual([10, 5.5, 10, 5.5, 10]);
+    expect(ctx.runs.every((r) => r.position.y === 8.8)).toBe(true);
+    // 欧文の単語の引用符は欧文フォント（スケール 0.95）のまま
+    const latin = lay("“Hi”");
+    expect(latin.runs.map((r) => r.fontId)).toEqual([0, 0, 0, 0]);
+    expect(latin.runs[0].frame.width).toBeCloseTo(5.225);
+  });
 });
 
 describe("kinsoku", () => {

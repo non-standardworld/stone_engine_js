@@ -58,7 +58,7 @@ export interface Run {
   isNewline: boolean;
   isNumber: boolean;
   punctuation: Punctuation;
-  /** 横書き時の送り幅（フォントスケール適用後の px）。 */
+  /** 描く字形の横書き方向の送り幅（フォントスケール適用後の px）。縦書きで全角の字形にする和文の引用符は 1em。 */
   advance: number;
   position: Point;
   frame: Rect;

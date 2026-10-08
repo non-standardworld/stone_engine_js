@@ -21,10 +21,16 @@ Swift 版は CoreText でグリフを取り出し、`STLayout` が 1 文字ず�
 ## インストール
 
 ```bash
-npm install github:non-standardworld/stone_engine_js
+npm install @non-standardworld/stone-engine.js
 ```
 
-npm に公開する場合は `npm publish` 後に `npm install @non-standardworld/stone-engine.js` でも同じです。React は peer dependency（任意）です。
+React は peer dependency（任意）です。React 用コンポーネントを使う場合は、`react` と `react-dom` もインストールしてください。
+
+補足: GitHub から直接インストールすることもできます。
+
+```bash
+npm install github:non-standardworld/stone_engine_js
+```
 
 ## React で使う
 

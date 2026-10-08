@@ -1,8 +1,7 @@
-export const INSTALL = `# GitHub から直接
-npm install github:non-standardworld/stone_engine_js
+export const INSTALL = `npm install @non-standardworld/stone-engine.js
 
-# npm に公開している場合
-npm install @non-standardworld/stone-engine.js`;
+# 補足: GitHub から直接インストールする場合
+npm install github:non-standardworld/stone_engine_js`;
 
 export const QUICK_START = `import { StoneText } from "@non-standardworld/stone-engine.js/react";
 

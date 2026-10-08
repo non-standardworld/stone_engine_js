@@ -66,7 +66,7 @@ export function App() {
               <a className="button" href="#playground">
                 プレイグラウンド
               </a>
-              <code>npm install github:non-standardworld/stone_engine_js</code>
+              <code>npm install @non-standardworld/stone-engine.js</code>
             </div>
           </div>
           <div className="hero__vertical">

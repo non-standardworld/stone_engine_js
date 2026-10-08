@@ -9,7 +9,7 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
-    "@non-standardworld/stone-engine": "file:../..",
+    "@non-standardworld/stone-engine.js": "file:../..",
     "@react-router/node": "^8.3.1",
     "@react-router/serve": "^8.3.1",
     "isbot": "^5.1.36",

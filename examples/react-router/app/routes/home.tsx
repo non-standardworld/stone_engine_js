@@ -1,16 +1,16 @@
 import { useCallback, useState } from "react";
 import type { Route } from "./+types/home";
-import { StoneText, type StoneContext } from "@non-standardworld/stone-engine/react";
+import { StoneText, type StoneContext } from "@non-standardworld/stone-engine.js/react";
 import type {
   Direction,
   DirectionAlign,
   PunctuationMode,
   TextAlign,
-} from "@non-standardworld/stone-engine";
+} from "@non-standardworld/stone-engine.js";
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "stone-engine × React Router" },
+    { title: "stone-engine.js × React Router" },
     { name: "description", content: "日本語組版エンジン stone_engine の JavaScript 版デモ" },
   ];
 }
@@ -108,7 +108,7 @@ export default function Home() {
           />
         </div>
         <div className="hero__body">
-          <h1>stone-engine × React Router</h1>
+          <h1>stone-engine.js × React Router</h1>
           <p>
             iOS 向け日本語組版エンジン <code>stone_engine</code> の JavaScript 移植です。左の縦書きは
             <code>&lt;StoneText direction="tbRl"&gt;</code> でサーバーサイドレンダリングされたページ上に組まれています。

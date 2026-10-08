@@ -2,9 +2,9 @@ export const INSTALL = `# GitHub から直接
 npm install github:non-standardworld/stone_engine_js
 
 # npm に公開している場合
-npm install @non-standardworld/stone-engine`;
+npm install @non-standardworld/stone-engine.js`;
 
-export const QUICK_START = `import { StoneText } from "@non-standardworld/stone-engine/react";
+export const QUICK_START = `import { StoneText } from "@non-standardworld/stone-engine.js/react";
 
 export function Lead() {
   return (
@@ -80,7 +80,7 @@ export const SSR = `// サーバーでは通常のテキスト（縦書きなら
 <StoneText fallback="none">{text}</StoneText>   // 視覚表示をせず、スクリーンリーダー用テキストだけを残す`;
 
 export const HOOK = `import { useRef } from "react";
-import { useStoneLayout, StoneSVG } from "@non-standardworld/stone-engine/react";
+import { useStoneLayout, StoneSVG } from "@non-standardworld/stone-engine.js/react";
 
 function Custom({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -95,7 +95,7 @@ function Custom({ text }: { text: string }) {
   );
 }`;
 
-export const VANILLA = `import { mountStoneText } from "@non-standardworld/stone-engine";
+export const VANILLA = `import { mountStoneText } from "@non-standardworld/stone-engine.js";
 
 const handle = mountStoneText(document.querySelector("#text")!, {
   text: "縦書きのテキスト",
@@ -105,7 +105,7 @@ const handle = mountStoneText(document.querySelector("#text")!, {
 handle.update({ fontSize: 24 });
 handle.destroy();`;
 
-export const LOW_LEVEL = `import { layoutText, svgString, handleStoneCopy, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine";
+export const LOW_LEVEL = `import { layoutText, svgString, handleStoneCopy, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine.js";
 
 const layout = layoutText(
   text,

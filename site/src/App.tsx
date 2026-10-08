@@ -340,10 +340,18 @@ export function App() {
 
       <footer className="footer">
         <div className="wrap">
-          MIT License. オリジナルの stone_engine の著作権は Nihon Design Center に帰属します。{" "}
-          <a href={REPO} target="_blank" rel="noreferrer">
-            GitHub
-          </a>
+          <p>
+            移植担当：
+            <a href="https://www.non-standardworld.co.jp/" target="_blank" rel="noreferrer">
+              non-standard world株式会社
+            </a>
+          </p>
+          <p>
+            MIT License. オリジナルの stone_engine の著作権は Nihon Design Center に帰属します。{" "}
+            <a href={REPO} target="_blank" rel="noreferrer">
+              GitHub
+            </a>
+          </p>
         </div>
       </footer>
     </>

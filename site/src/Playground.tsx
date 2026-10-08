@@ -4,7 +4,8 @@ import type { Direction, DirectionAlign, PunctuationMode, TextAlign } from "@non
 
 const SAMPLE = `stone_engineは、日本語の文字組版を実現する、テキストレンダリングエンジンである。
 その第一義の目的は「日本語の高度な組版」を実現することだ。具体的には、縦書き、禁則処理、約物処理、文字種ごとのスケーリングが挙げられる（2024年12月、Ver.1.0）。
-Hello, world! 縦書きでは2桁以下の数字は縦中横で、123のような3桁以上の数字とアルファベットは90度回転する。「約物」の連続（「『』」など）は、stoneモードで自然に詰まる。`;
+Hello, world! 縦書きでは2桁以下の数字は縦中横で、123のような3桁以上の数字とアルファベットは90度回転する。「約物」の連続（「『』」など）は、stoneモードで自然に詰まる。
+「待って……」と言った——“了解”‼ ダーシやリーダー、和文中の引用符は縦書きでも回転しない。`;
 
 const JP_FONTS = [
   { label: "Noto Sans JP", value: '"Noto Sans JP", sans-serif' },

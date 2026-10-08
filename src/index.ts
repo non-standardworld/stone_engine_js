@@ -1,5 +1,5 @@
 /*
-@non-standardworld/stone-engine — 日本語組版エンジン stone_engine の JavaScript / TypeScript 移植。
+@non-standardworld/stone-engine.js — 日本語組版エンジン stone_engine の JavaScript / TypeScript 移植。
 */
 
 export * from "./types.js";

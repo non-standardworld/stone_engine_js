@@ -1,4 +1,4 @@
-# @non-standardworld/stone-engine
+# @non-standardworld/stone-engine.js
 
 日本語組版エンジン [stone_engine](https://github.com/ndc-stone/stone_engine)（Nihon Design Center、iOS / Swift 製）の JavaScript / TypeScript 移植です。
 縦書き、禁則処理、約物の半角詰め、縦中横、文字種ごとのフォントとスケール指定といったエンジンの機能を、ブラウザ標準のフォント描画の上で再現します。React 用のコンポーネントと、フレームワークを使わない DOM 用 API を同梱しています。
@@ -24,12 +24,12 @@ Swift 版は CoreText でグリフを取り出し、`STLayout` が 1 文字ず�
 npm install github:non-standardworld/stone_engine_js
 ```
 
-npm に公開する場合は `npm publish` 後に `npm install @non-standardworld/stone-engine` でも同じです。React は peer dependency（任意）です。
+npm に公開する場合は `npm publish` 後に `npm install @non-standardworld/stone-engine.js` でも同じです。React は peer dependency（任意）です。
 
 ## React で使う
 
 ```tsx
-import { StoneText } from "@non-standardworld/stone-engine/react";
+import { StoneText } from "@non-standardworld/stone-engine.js/react";
 
 export function Article() {
   return (
@@ -109,7 +109,7 @@ SVG の中の 1 文字は `data-run`（run ID）を持つ `<tspan>` です。文
 
 ```tsx
 import { useRef } from "react";
-import { useStoneLayout, StoneSVG } from "@non-standardworld/stone-engine/react";
+import { useStoneLayout, StoneSVG } from "@non-standardworld/stone-engine.js/react";
 
 function Custom({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -128,7 +128,7 @@ function Custom({ text }: { text: string }) {
 ## React 以外で使う
 
 ```ts
-import { mountStoneText } from "@non-standardworld/stone-engine";
+import { mountStoneText } from "@non-standardworld/stone-engine.js";
 
 const handle = mountStoneText(document.querySelector("#text")!, {
   text: "縦書きのテキスト",
@@ -142,7 +142,7 @@ handle.destroy();
 さらに低いレベルでは、`layoutText()` に計測器（ブラウザなら `getSharedCanvasMeasurer()`）を渡して `StoneContext` を受け取り、`svgString()` で SVG 文字列にできます。計測器は `FontMeasurer` インターフェースなので、opentype.js などでフォントファイルから計測する実装に差し替えれば、サーバー側で組版して SVG を SSR することもできます。
 
 ```ts
-import { layoutText, svgString, handleStoneCopy, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine";
+import { layoutText, svgString, handleStoneCopy, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine.js";
 
 const layout = layoutText(text, { direction: "tbRl", fontSize: 20 }, getSharedCanvasMeasurer()!, { height: 400 });
 element.innerHTML = svgString(layout);

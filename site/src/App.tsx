@@ -1,4 +1,4 @@
-import { StoneText } from "@non-standardworld/stone-engine/react";
+import { StoneText } from "@non-standardworld/stone-engine.js/react";
 import { CodeBlock } from "./CodeBlock";
 import { Playground } from "./Playground";
 import { Sample } from "./Sample";
@@ -8,7 +8,7 @@ const REPO = "https://github.com/non-standardworld/stone_engine_js";
 
 const HERO = `紙ではなく、画面のための日本語組版。
 縦書き、禁則、約物、縦中横。
-stone-engineは、それらをWebフォントのまま、ブラウザの上で組み直す。`;
+stone-engine.jsは、それらをWebフォントのまま、ブラウザの上で組み直す。`;
 
 const SERIF = { japanese: { family: '"Noto Serif JP", "Hiragino Mincho ProN", serif' } };
 const SANS = { japanese: { family: '"Noto Sans JP", "Hiragino Sans", sans-serif' } };
@@ -28,7 +28,7 @@ export function App() {
       <header className="nav">
         <div className="wrap">
           <a className="nav__brand" href="#top">
-            stone-engine
+            stone-engine.js
           </a>
           <nav className="nav__links">
             <a href="#features">できること</a>
@@ -52,7 +52,7 @@ export function App() {
               Web フォントのまま組む。
             </h1>
             <p>
-              stone-engine は、iOS 向け日本語組版エンジン{" "}
+              stone-engine.js は、iOS 向け日本語組版エンジン{" "}
               <a href="https://github.com/ndc-stone/stone_engine" target="_blank" rel="noreferrer">
                 stone_engine
               </a>{" "}
@@ -222,7 +222,7 @@ export function App() {
 
           <h3>React で使う</h3>
           <p>
-            <code>@non-standardworld/stone-engine/react</code> から <code>StoneText</code> を読み込みます。幅は既定でコンポーネント自身の幅に合わせて折り返します。
+            <code>@non-standardworld/stone-engine.js/react</code> から <code>StoneText</code> を読み込みます。幅は既定でコンポーネント自身の幅に合わせて折り返します。
           </p>
           <CodeBlock code={S.QUICK_START} />
 

@@ -1,5 +1,5 @@
 {
-  "name": "@non-standardworld/stone-engine",
+  "name": "@non-standardworld/stone-engine.js",
   "version": "0.1.0",
   "description": "日本語組版エンジン stone_engine の JavaScript / TypeScript 移植。縦書き・禁則処理・約物半角・縦中横・文字種ごとのフォント指定を、ブラウザ標準のフォント描画の上で実現します。React 用コンポーネント同梱。",
   "license": "MIT",

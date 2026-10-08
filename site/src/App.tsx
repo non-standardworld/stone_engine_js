@@ -13,10 +13,13 @@ stone-engineは、それらをWebフォントのまま、ブラウザの上で�
 const SERIF = { japanese: { family: '"Noto Serif JP", "Hiragino Mincho ProN", serif' } };
 const SANS = { japanese: { family: '"Noto Sans JP", "Hiragino Sans", sans-serif' } };
 
-const KINSOKU_TEXT = "行頭に「、」や「。」を置かない。行末に「「」を置かない。これが禁則処理である。";
+const KINSOKU_TEXT = "行頭に「、」や「。」を置かない。長いコーヒーやチョコレートの「ー」や「ョ」も行頭に来ない。三点リーダー「……」も分けない。";
 const PUNCT_TEXT = "「約物」の連続（『』）は、モードで詰まり方が変わる。";
 const ALIGN_TEXT =
-  "均等配置では、最終行を除いて単語の間を広げ、行末を揃える。日本語と English が混ざっていても、単語の境界で調整する。";
+  "均等配置では、最終行を除いて文字の間を均等に広げ、行末を揃える。日本語と English が混ざっていても、欧文の単語の途中は空けない。";
+const TRUNCATE_TEXT =
+  "領域に収まらない行は表示せず、続きがあるときは最後に表示する文字を省略記号にする。途中まで見える行も隠すので、省略記号はいつも 1 つだけになる。";
+const JAPANESE_PUNCTUATION_TEXT = "「待って……」と言った——“了解”‼ ※欧文の“Hello”は回転する。";
 
 /** ドキュメントサイト本体。 */
 export function App() {
@@ -104,17 +107,17 @@ export function App() {
 
             <Sample
               title="禁則処理"
-              description="句読点や閉じ括弧を行頭に、開き括弧を行末に置きません。単語単位で行末を戻します。"
+              description="句読点や閉じ括弧を行頭に、開き括弧を行末に置きません。「ー」や小書きの仮名、全角の「！」「・」も行頭に置かない強い禁則（CSS の line-break: strict 相当）で、「……」「——」の途中でも改行しません。"
               code={S.KINSOKU}
             >
               <div className="sample__row">
                 <div className="sample__col">
                   <div className="sample__label">kinsoku（既定）</div>
-                  <StoneText width={220} fontSize={16} lineHeightScale={1.8} fonts={SANS} text={KINSOKU_TEXT} />
+                  <StoneText width={220} fontSize={16} lineHeightScale={1.8} fonts={SANS} dividesByWords={false} text={KINSOKU_TEXT} />
                 </div>
                 <div className="sample__col">
                   <div className="sample__label">kinsoku={"{false}"}</div>
-                  <StoneText width={220} fontSize={16} lineHeightScale={1.8} fonts={SANS} kinsoku={false} text={KINSOKU_TEXT} />
+                  <StoneText width={220} fontSize={16} lineHeightScale={1.8} fonts={SANS} dividesByWords={false} kinsoku={false} text={KINSOKU_TEXT} />
                 </div>
               </div>
             </Sample>
@@ -151,8 +154,53 @@ export function App() {
               />
             </Sample>
 
-            <Sample title="文字寄せ" description="行頭・中央・行末・均等。均等配置は最終行と改行で終わる行を除きます。" code={S.ALIGN}>
-              <StoneText width={320} fontSize={15} lineHeightScale={1.9} fonts={SANS} textAlign="justify" text={ALIGN_TEXT} />
+            <Sample
+              title="文字寄せ"
+              description="行頭・中央・行末・均等。均等配置は最終行と改行で終わる行を除き、余白を文字間に均等に配ります。欧文の単語の途中と「……」「——」の間は空けません。"
+              code={S.ALIGN}
+            >
+              <StoneText width={300} fontSize={15} lineHeightScale={1.9} fonts={SANS} textAlign="justify" text={ALIGN_TEXT} />
+            </Sample>
+
+            <Sample
+              title="ダーシ・リーダー・引用符"
+              description="「……」「——」や「‼」「※」は欧文の後ろでも和文フォントで組み、縦書きでは回転させずに列の中央に描きます。引用符は欧文に付けば欧文、和文中なら和文として組みます。"
+              code={S.JAPANESE_PUNCTUATION}
+              vertical
+            >
+              <StoneText
+                direction="tbRl"
+                height={280}
+                fontSize={18}
+                lineHeightScale={1.9}
+                fonts={SERIF}
+                text={JAPANESE_PUNCTUATION_TEXT}
+              />
+            </Sample>
+
+            <Sample
+              title="切り詰めと省略記号"
+              description="行送り方向（横書きは高さ、縦書きは幅）に収まらない行は表示せず、最後に表示する文字を省略記号にします。縦書きでは正立の「︙」を描きます。"
+              code={S.TRUNCATE}
+            >
+              <div className="sample__row">
+                <div className="sample__col">
+                  <div className="sample__label">height={"{84}"}</div>
+                  <StoneText width={260} height={84} fontSize={15} lineHeightScale={1.8} fonts={SANS} text={TRUNCATE_TEXT} />
+                </div>
+                <div className="sample__col">
+                  <div className="sample__label">direction="tbRl" width={"{96}"}</div>
+                  <StoneText
+                    direction="tbRl"
+                    width={96}
+                    height={220}
+                    fontSize={15}
+                    lineHeightScale={1.8}
+                    fonts={SANS}
+                    text={TRUNCATE_TEXT}
+                  />
+                </div>
+              </div>
             </Sample>
 
             <Sample
@@ -190,9 +238,18 @@ export function App() {
           </p>
           <CodeBlock code={S.SSR} />
 
+          <h3>選択とコピー</h3>
+          <p>
+            組版後の SVG のテキストも、通常のテキストと同じように選択してコピーできます。1 つのテキストの中で選択したときは、改行・空白・空行を含む元のテキストがそのままクリップボードに入ります（省略記号まで選択した場合は、切り詰められた残りも含みます）。ページの他の部分にまたがる選択はブラウザ標準のコピーになりますが、段落ごとに <code>{"<text>"}</code> をまとめているので、1 文字ずつ改行されることはありません。
+          </p>
+          <p>
+            SVG の中の 1 文字は <code>data-run</code>（run ID）を持つ <code>{"<tspan>"}</code> です。文字ごとにスタイルを当てるときは <code>.stone-text svg [data-run]</code> を対象にしてください。
+          </p>
+          <CodeBlock code={S.COPY} />
+
           <h3>レイアウト結果を使う</h3>
           <p>
-            <code>useStoneLayout</code> フックは Swift 版の <code>STContext</code> に相当する <code>StoneContext</code> を返します。文字ごとの <code>runs</code>、<code>tokens</code>、<code>lineCount</code>、<code>renderedSize</code>、当たり判定の <code>hitRunIndex()</code> などが使えます。
+            <code>useStoneLayout</code> フックは Swift 版の <code>STContext</code> に相当する <code>StoneContext</code> を返します。文字ごとの <code>runs</code>、<code>tokens</code>、<code>lineCount</code>、<code>renderedSize</code>、当たり判定の <code>hitRunIndex()</code> / <code>closestRunIndex()</code> などが使えます。
           </p>
           <CodeBlock code={S.HOOK} />
 
@@ -235,7 +292,7 @@ export function App() {
             </table>
           </div>
           <p style={{ marginTop: 16 }}>
-            <code>fonts</code> の既定値は、和文がヒラギノ角ゴ → Noto Sans JP → 游ゴシック、欧文が Helvetica Neue（スケール 0.95）です。和文フォントのアセント／ディセントは仮想ボディに合わせて 0.88 / 0.12 を使い、欧文はブラウザが返すフォントメトリクスを使います。フォントによって上下位置を調整したい場合は <code>ascent</code> / <code>descent</code> で上書きできます。
+            <code>fonts</code> の既定値は、和文がヒラギノ角ゴ → Noto Sans JP → 游ゴシック、欧文が Helvetica Neue（スケール 0.95）です。和文フォントのアセント／ディセントは仮想ボディに合わせて 0.88 / 0.12 を使い、欧文はブラウザが返すフォントメトリクスを使います。フォントによって上下位置を調整したい場合は <code>ascent</code> / <code>descent</code> で上書きできます。ダーシ「—」「―」とリーダー「‥」「…」、縦書きで正立する「‼」「⁉」「※」「†」「‰」などは、欧文の後ろでも和文フォントで組みます。引用符「“」「”」「‘」「’」は、欧文に付くもの（“Hello”、it’s）は欧文フォント、和文中のものは和文フォントで組みます。
           </p>
         </section>
 
@@ -253,7 +310,25 @@ export function App() {
             <li>縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの font-feature-settings に任せています。</li>
             <li>Intl.Segmenter が無い環境では単語分割が書記素分割にフォールバックします。</li>
             <li>
-              元実装の明らかな不具合をいくつか修正しています。詳細は{" "}
+              均等配置の余白は、トークン（単語）間ではなく文字間に配ります。トークン間にだけ配ると、日本語の本文で文節ごとに大きな空きができるためです。
+            </li>
+            <li>
+              切り詰めは行単位で、領域に完全に収まる行だけを表示し、省略記号は 1 つだけにします。省略記号は領域に収め、縦書きでは正立の「︙」を列の位置に描きます。
+            </li>
+            <li>
+              ダーシ「—」「―」とリーダー「‥」「…」、縦書きで正立する「‼」「⁉」「※」「†」「‰」などは和文として扱い、縦書きでは回転させずに描きます。Swift 版は欧文として扱うため、縦書きでは欧文フォントのまま 90 度回転していました。分離禁止文字（「—」「―」「‥」「…」「〳」「〴」「〵」）が続く間では改行しません。
+            </li>
+            <li>
+              引用符「“」「”」「‘」「’」は前後の文字で文字種を決め、和文中のものは和文フォントで組みます。縦書きでは全角の字形の縦組み用グリフ（〝〟の形）で 1em 送ります。
+            </li>
+            <li>
+              行頭禁則は JLREQ の行頭禁則の文字クラスをすべて含む強い禁則です（CSS の line-break: strict 相当）。全角の「！」「．」「，」「：」「；」「・」や「ー」「ゝ」「ゞ」「〜」も行頭に置きません。ブラウザの既定（line-break: auto）とは改行位置が違うことがあります。
+            </li>
+            <li>
+              組版した SVG を選択してコピーしても 1 文字ずつ改行されず、元のテキストがそのままコピーされます。
+            </li>
+            <li>
+              ほかにも元実装の明らかな不具合（禁則の追い出し単位、行頭約物の二重詰め、均等配置の余り、縦書き均等配置での 1 桁縦中横、directionAlign: middle のずれ）を修正しています。詳細は{" "}
               <a href={`${REPO}/blob/main/src/layout.ts`} target="_blank" rel="noreferrer">
                 src/layout.ts
               </a>{" "}

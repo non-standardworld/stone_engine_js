@@ -36,8 +36,9 @@ export const TATE_CHU_YOKO = `<StoneText direction="tbRl" height={280} fontSize=
   {"令和6年12月31日、Ver.2.0を公開した。数字は2桁まで縦中横、3桁以上の123と英字は回転する。"}
 </StoneText>`;
 
-export const KINSOKU = `<StoneText width={220} kinsoku>{text}</StoneText>
-<StoneText width={220} kinsoku={false}>{text}</StoneText>`;
+export const KINSOKU = `// 比べやすいように 1 文字単位で折り返す（dividesByWords={false}）
+<StoneText width={220} dividesByWords={false} kinsoku>{text}</StoneText>
+<StoneText width={220} dividesByWords={false} kinsoku={false}>{text}</StoneText>`;
 
 export const PUNCTUATION = `<StoneText punctuationMode="whole">{text}</StoneText>  // 常に全角
 <StoneText punctuationMode="half">{text}</StoneText>   // 常に半角
@@ -52,7 +53,19 @@ export const FONTS = `<StoneText
   {"日本語の中に English や 2024 を混ぜても、文字種ごとにフォントとスケールを選べる。"}
 </StoneText>`;
 
-export const ALIGN = `<StoneText textAlign="justify" width={320}>{text}</StoneText>`;
+export const ALIGN = `// 余白は文字間に均等に配る。欧文の単語の途中と「……」「——」の間は空けない
+<StoneText textAlign="justify" width={300}>{text}</StoneText>`;
+
+export const TRUNCATE = `// 行送り方向（横書きは高さ、縦書きは幅）に収まらない行は表示せず、
+// 最後に表示する文字を省略記号（横書き「…」、縦書き「︙」）にする
+<StoneText width={260} height={84}>{text}</StoneText>
+<StoneText direction="tbRl" width={96} height={220}>{text}</StoneText>`;
+
+export const JAPANESE_PUNCTUATION = `// ダーシ・リーダーと「‼」「※」などは欧文の後ろでも和文フォントで組み、縦書きで回転させない。
+// 引用符は欧文に付けば欧文、和文中なら和文として組む
+<StoneText direction="tbRl" height={280}>
+  {"「待って……」と言った——“了解”‼ ※欧文の“Hello”は回転する。"}
+</StoneText>`;
 
 export const FRAMES = `// showFrames で各文字の占有矩形を描く。
 // onLayout で受け取る StoneContext から位置・矩形・行番号が取れる。
@@ -92,7 +105,7 @@ const handle = mountStoneText(document.querySelector("#text")!, {
 handle.update({ fontSize: 24 });
 handle.destroy();`;
 
-export const LOW_LEVEL = `import { layoutText, svgString, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine";
+export const LOW_LEVEL = `import { layoutText, svgString, handleStoneCopy, getSharedCanvasMeasurer } from "@non-standardworld/stone-engine";
 
 const layout = layoutText(
   text,
@@ -101,10 +114,18 @@ const layout = layoutText(
   { height: 400 },
 );
 element.innerHTML = svgString(layout);
+// コピーしたときに元のテキスト（改行・空白を含む）が入るようにする。mountStoneText と StoneSVG は自動で行う
+element.addEventListener("copy", (event) => handleStoneCopy(event, layout, element));
 
 // layout.runs[i].frame     文字の占有矩形
 // layout.runs[i].position  グリフ原点（ベースライン左端）
-// layout.hitRunIndex({ x, y })  点を含む文字の ID`;
+// layout.hitRunIndex({ x, y })      点を含む文字の ID
+// layout.closestRunIndex({ x, y })  点にいちばん近い文字の ID`;
+
+export const COPY = `/* SVG の 1 文字は data-run（run ID）を持つ <tspan>。svg text は段落全体になる */
+.stone-text svg [data-run]:hover {
+  fill: crimson;
+}`;
 
 export interface PropRow {
   name: string;
@@ -117,7 +138,7 @@ export const PROPS: PropRow[] = [
   { name: "direction", def: '"lrTb"', desc: '"lrTb" 横書き、"tbRl" 縦書き' },
   { name: "fontSize", def: "17", desc: "フォントサイズ（px）" },
   { name: "lineHeightScale", def: "1", desc: "行送り（フォントサイズに対する倍率）" },
-  { name: "textAlign", def: '"leading"', desc: "leading / center / trailing / justify" },
+  { name: "textAlign", def: '"leading"', desc: "leading / center / trailing / justify。justify は最終行と改行で終わる行を除いて行末をそろえる。余白は文字間に均等に配り、欧文の単語の途中と「……」「——」の間は空けない" },
   { name: "directionAlign", def: '"start"', desc: "行送り方向の寄せ（横書きなら上下、縦書きなら左右）" },
   { name: "punctuationMode", def: '"stone"', desc: "約物の扱い。whole 常に全角、half 常に半角、stone 前後関係で判断" },
   { name: "kinsoku", def: "true", desc: "行頭・行末禁則（「ー」や小書きの仮名も行頭に置かない強い禁則）と分離禁止（「……」「——」の途中で改行しない）" },
@@ -125,7 +146,7 @@ export const PROPS: PropRow[] = [
   { name: "allowsTateChuYoko", def: "true", desc: "縦書きで 2 桁以下の数字を正体にする（縦中横）" },
   { name: "adjustsFontSizeToFitWidth / minimumScaleFactor", def: "false / 0", desc: "収まらないときにフォントを縮小する" },
   { name: "fonts", def: "", desc: "文字種（latin / japanese / emoji）ごとの { family, scale, weight, style, ascent, descent }" },
-  { name: "width / height", def: '横書き "container" / "auto"、縦書き "auto" / "auto"', desc: 'レイアウト領域。数値（px）、"auto"（制限なし）、"container"（コンポーネントの大きさ）。縦書きの幅は内容に合わせて左に伸びる。行送り方向（横書きは高さ、縦書きは幅）に収まらない行は表示せず、続きがあるときは最後に表示する文字を省略記号にする' },
+  { name: "width / height", def: '横書き "container" / "auto"、縦書き "auto" / "auto"', desc: 'レイアウト領域。数値（px）、"auto"（制限なし）、"container"（コンポーネントの大きさ）。縦書きの幅は内容に合わせて左に伸びる。行送り方向（横書きは高さ、縦書きは幅）に収まらない行は表示せず、続きがあるときは最後に表示する文字を省略記号（横書き「…」、縦書き「︙」）にする' },
   { name: "color", def: "currentColor", desc: "文字色" },
   { name: "showFrames", def: "false", desc: "各文字の占有矩形を描く（デバッグ用）" },
   { name: "fallback", def: '"text"', desc: "レイアウト前（SSR・フォント読み込み前）の表示。text 通常のテキスト、hidden 場所だけ確保、none 視覚表示なし（スクリーンリーダー用テキストは残る）" },

@@ -52,6 +52,35 @@ export const FONTS = `<StoneText
   {"日本語の中に English や 2024 を混ぜても、文字種ごとにフォントとスケールを選べる。"}
 </StoneText>`;
 
+export const RICH_TEXT = `// children の要素から、リンク・文字色・下線・打ち消し線・太字・斜体を読み取って組む
+<StoneText direction="tbRl" height={240}>
+  詳しくは<a href="https://github.com/non-standardworld/stone_engine_js">GitHub</a>へ。
+  <span style={{ color: "#2f6f9f" }}>文字色</span>や<u>下線</u>、<s>打ち消し線</s>、
+  <strong>太字 Bold</strong>、<em>斜体 Italic</em>も組める。
+</StoneText>`;
+
+export const RICH_TEXT_USAGE = `import { Link } from "react-router";
+
+<StoneText direction="tbRl" height={360}>
+  詳しくは<a href="/docs">ドキュメント</a>を、更新情報は<Link to="/news">お知らせ</Link>をご覧ください。
+  <br />
+  <span style={{ color: "crimson" }}>赤い文字</span>と<u>下線</u>、<strong>太字 Bold</strong>も組めます。
+</StoneText>
+
+/* SVG のリンクと線にはスタイルを当てられる */
+.stone-text svg a:hover { fill: crimson; }
+.stone-text svg .stone-decorations rect { fill: currentColor; }`;
+
+export const RICH_TEXT_VANILLA = `import { mountStoneText, readStoneSource } from "@non-standardworld/stone-engine.js";
+
+// 描画されている（display: none ではない）HTML の要素から、テキストと範囲を読み取る
+const { text, spans } = readStoneSource(document.querySelector("#source")!);
+mountStoneText(document.querySelector("#text")!, { text, spans, direction: "tbRl", height: 360 });
+
+// layoutText を直接使うときは、太さ・スタイルを組みに反映するため spans をレイアウトにも渡す
+const layout = layoutText(text, options, getSharedCanvasMeasurer()!, { height: 360 }, spans);
+element.innerHTML = svgString(layout, { spans });`;
+
 export const ALIGN = `// 余白は文字間に均等に配る。欧文の単語の途中と「……」「——」の間は空けない
 <StoneText textAlign="justify" width={300}>{text}</StoneText>`;
 

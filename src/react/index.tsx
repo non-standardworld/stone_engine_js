@@ -27,6 +27,7 @@ import {
   svgOverflow,
   svgSize,
 } from "../render/svg.js";
+import type { VerticalFormsOption } from "../render/vertical.js";
 import { resolveFonts } from "../fonts.js";
 import type { FontMeasurer, Size, StoneOptions } from "../types.js";
 
@@ -137,6 +138,11 @@ export interface StoneSVGProps extends Omit<SVGProps<SVGSVGElement>, "width" | "
   /** 各 run の frame を描く（デバッグ用）。 */
   showFrames?: boolean;
   frameColor?: string;
+  /**
+   * 縦書きの和文の縦組み用グリフの描き方。"feature" は font-feature-settings の vert、"emulated" は横組みのグリフの
+   * 回転と移動で代用する（vert が効かない Safari などの WebKit 用）。既定 "auto"（ブラウザに合わせる）。
+   */
+  verticalForms?: VerticalFormsOption;
 }
 
 /**
@@ -148,12 +154,13 @@ export function StoneSVG({
   color = "currentColor",
   showFrames = false,
   frameColor = DEFAULT_FRAME_COLOR,
+  verticalForms,
   style,
   onCopy,
   ...rest
 }: StoneSVGProps) {
   const size = svgSize(layout);
-  const paragraphs = glyphParagraphs(layout);
+  const paragraphs = glyphParagraphs(layout, verticalForms);
   const handleCopy = (e: ClipboardEvent<SVGSVGElement>) => {
     onCopy?.(e);
     if (e.isDefaultPrevented() || e.nativeEvent.defaultPrevented) return;

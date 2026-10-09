@@ -14,7 +14,7 @@ Swift 版は CoreText でグリフを取り出し、`STLayout` が 1 文字ず�
 - 解析（`STParser`）は `Intl.Segmenter` で単語／書記素に分割
 - 計測（CoreText の送り幅・アセント／ディセント）は Canvas 2D の `measureText` で取得
 - レイアウト（`STLayout` / `STContext`）は TypeScript にそのまま移植
-- 描画は SVG。改行で区切った段落ごとに `<text>` を 1 つ置き、その中に 1 文字ずつ位置を指定した `<tspan>` を並べる。縦書きの欧文は `rotate="90"`、和文は `font-feature-settings: "vert"` で縦組み用グリフに置換
+- 描画は SVG。改行で区切った段落ごとに `<text>` を 1 つ置き、その中に 1 文字ずつ位置を指定した `<tspan>` を並べる。縦書きの欧文は `rotate="90"`、和文は `font-feature-settings: "vert"` で縦組み用グリフに置換。`vert` が効かない Safari などの WebKit では、縦組み用グリフを横組みのグリフの回転と移動で描く
 
 という構成です。フォントファイルを読み込む必要はなく、CSS で使える Web フォント（Google Fonts など）やシステムフォントがそのまま使えます。レイアウト結果は 1 文字ごとの位置・矩形・行番号として取り出せるので、Swift 版と同じく「内部構造を直接触れる」エンジンになっています。
 
@@ -160,7 +160,7 @@ element.addEventListener("copy", (event) => handleStoneCopy(event, layout, eleme
 
 - 編集機能（`STTextView`、カーソル、選択、ルーペ）は移植していません。表示（`STLabel`）に相当する機能のみです。
 - フォントは名前の配列ではなく CSS の `font-family` リストで指定します。グリフ単位のフォールバックはブラウザが行います。
-- 縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの `font-feature-settings` に任せています。
+- 縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの `font-feature-settings` に任せています。ただし Safari と iOS / iPadOS のブラウザ（Apple の WebKit）は横組みの文字列に `vert` を適用しないので、縦組み用グリフが横組みのグリフの回転か平行移動になっている文字（括弧類・「ー」「〜」・ダーシ・リーダー・「、。，．」・小書きの仮名など）を、その変形で描きます。変形の値はヒラギノ角ゴシックの縦組み用グリフを計測したもので、元の文字は置き換えません（コピーやページ内検索はそのままです）。和文中の引用符「“」「”」は〝〟の形にはならず、CSS の縦書きと同じく横倒しになります。描き方は `StoneSVG` / `svgString` / `mountStoneText` の `verticalForms`（`"auto"` 既定、`"feature"`、`"emulated"`）で固定できます。
 - `Intl.Segmenter` が無い環境では単語分割が書記素分割にフォールバックします（`dividesByWords: false` 相当）。
 - 元実装の明らかな不具合をいくつか修正しています（禁則の追い出し単位、行頭約物の二重詰め、均等配置の余り、縦書き均等配置での 1 桁縦中横、`directionAlign: middle` のずれ）。詳細は `src/layout.ts` 冒頭のコメントを参照してください。
 - 均等配置（`textAlign: "justify"`）の余白は、トークン（単語）間ではなく文字間に配ります。元実装のようにトークン間にだけ配ると、`dividesByWords` が有効なときに文節ごとに大きな空きができて日本語の本文としては不自然になるためです。欧文の単語の途中（空白を挟まない欧文どうし）、縦中横の途中、「……」「——」の間は空けず、行末の空白は幅 0 にして除きます。

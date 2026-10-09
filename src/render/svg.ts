@@ -4,6 +4,7 @@ render/svg.ts — レイアウト結果を SVG に変換する（フレームワ
 Swift 版は CoreText でグリフを直接描いていたが、Web ではブラウザのフォント描画をそのまま使う。
 1 文字ごとに <tspan x y> を置き、縦書きの欧文は rotate="90"、和文は font-feature-settings の vert で縦組み用グリフに置き換える。
 縦書きの和文の引用符「“」「”」「‘」「’」は、fwid で全角の字形にしてから vert で縦組み用グリフ（〝〟の形）にする。
+vert が効かない Safari などの WebKit では、縦組み用グリフを横組みのグリフの回転と移動で描く（render/vertical.ts）。
 
 <text> は改行で区切った段落ごとに 1 つにまとめる。Chrome / Safari は SVG の <text> をブロックとして扱い、
 選択範囲をコピーするときに <text> の境目ごとに改行を入れるため、1 文字ごとに <text> を分けると
@@ -14,6 +15,7 @@ Swift 版は CoreText でグリフを直接描いていたが、Web ではブラ
 import type { StoneContext } from "../context.js";
 import { HORIZONTAL_ELLIPSIS, isSpaceChar, VERTICAL_ELLIPSIS } from "../punctuation.js";
 import { SCRIPTS, type Run, type Size } from "../types.js";
+import { resolveVerticalForms, verticalGlyphTransform, type VerticalForms, type VerticalFormsOption } from "./vertical.js";
 
 /** 和文フォントの ID（フォント ID は SCRIPTS の添字と一致する）。縦書きの省略記号はこのフォントで描く。 */
 const JAPANESE_FONT_ID = SCRIPTS.indexOf("japanese");
@@ -26,6 +28,9 @@ export const VERTICAL_FEATURE_SETTINGS = '"vert" 1, "vrt2" 1';
  * 字形で、vert の置き換え先がない（vrt2 だと回転した字形になる）。全角の字形（fwid）には縦組み用グリフ（〝〟の形）がある。
  */
 export const FULL_WIDTH_VERTICAL_FEATURE_SETTINGS = '"fwid" 1, "vert" 1, "vrt2" 1';
+
+/** 全角の字形だけを使う CSS 値（vert を使わずに回して描く縦書きの和文の引用符）。 */
+export const FULL_WIDTH_FEATURE_SETTINGS = '"fwid" 1';
 
 /** showFrames で描く矩形の既定の色。 */
 export const DEFAULT_FRAME_COLOR = "rgba(0,128,255,0.6)";
@@ -98,16 +103,39 @@ function glyphElement(ctx: StoneContext, runId: number, text: string, placement:
 }
 
 /** run をそのフォント・位置で描く描画要素にする。text は実際に描く文字列。 */
-function toGlyphElement(ctx: StoneContext, runId: number, text: string): GlyphElement {
+function toGlyphElement(ctx: StoneContext, runId: number, text: string, forms: VerticalForms): GlyphElement {
   const run = ctx.runs[runId];
-  return glyphElement(ctx, runId, text, {
+  const placement: GlyphPlacement = {
     x: run.position.x,
     y: run.position.y,
     fontId: run.fontId,
     rotate: ctx.isClockwise(run) ? 90 : 0,
     vertical: ctx.usesVerticalGlyph(run),
     fullWidth: ctx.usesFullWidthGlyph(run),
-  });
+  };
+  if (forms === "emulated" && placement.vertical) emulateVerticalGlyph(ctx, run, placement);
+  return glyphElement(ctx, runId, text, placement);
+}
+
+/**
+ * vert を使わずに、縦組み用グリフを横組みのグリフの回転と移動で描くよう placement を書き換える（render/vertical.ts）。
+ * 回転は em ボックス（グリフ原点の上 ascent から 1em 四方）の中心で回す。rotate 属性はグリフ原点を中心に回すので、
+ * 原点を (x + 1em − ascent, y − ascent) に移してから 90 度回すと、回した字形が元の em ボックスにちょうど重なる。
+ */
+function emulateVerticalGlyph(ctx: StoneContext, run: Run, placement: GlyphPlacement): void {
+  placement.vertical = false;
+  const transform = verticalGlyphTransform(run.char, placement.fullWidth);
+  if (!transform) return;
+  const em = ctx.fontManager.scaledSize(run.fontId, ctx.adjustFontSize);
+  if (transform.type === "rotate") {
+    const ascent = ctx.fontManager.ascent(run.fontId, ctx.adjustFontSize);
+    placement.x += em - ascent;
+    placement.y -= ascent;
+    placement.rotate = 90;
+  } else {
+    placement.x += transform.dx * em;
+    placement.y += transform.dy * em;
+  }
 }
 
 /**
@@ -148,8 +176,12 @@ function columnLeft(ctx: StoneContext, run: Run): number {
   return (first.x + last.x + last.width - ctx.adjustFontSize) * 0.5;
 }
 
-/** 描画対象の run を描画要素に変換する。改行や空白、非表示の run は含まれない。 */
-export function glyphElements(ctx: StoneContext): GlyphElement[] {
+/**
+ * 描画対象の run を描画要素に変換する。改行や空白、非表示の run は含まれない。
+ * verticalForms は縦書きの和文の縦組み用グリフの描き方（既定はブラウザに合わせる。render/vertical.ts）。
+ */
+export function glyphElements(ctx: StoneContext, verticalForms?: VerticalFormsOption): GlyphElement[] {
+  const forms = resolveVerticalForms(verticalForms);
   const elements: GlyphElement[] = [];
   for (let i = 0; i < ctx.runs.length; i++) {
     const run = ctx.runs[i];
@@ -158,7 +190,7 @@ export function glyphElements(ctx: StoneContext): GlyphElement[] {
     if (run.visibility === "ellipsis") {
       elements.push(toEllipsisElement(ctx, i));
     } else if (!isSpaceChar(run.char)) {
-      elements.push(toGlyphElement(ctx, i, run.char));
+      elements.push(toGlyphElement(ctx, i, run.char, forms));
     }
   }
   return elements;
@@ -169,27 +201,28 @@ export function glyphElements(ctx: StoneContext): GlyphElement[] {
  * glyphElements と違って空白の run も含める（見た目は変わらないが、選択してコピーしたときに空白が残る）。
  * 空行は、その行の改行の run を空白 1 つとして置く（コピーしたときに空行が詰まらないように）。
  */
-export function glyphParagraphs(ctx: StoneContext): GlyphParagraph[] {
+export function glyphParagraphs(ctx: StoneContext, verticalForms?: VerticalFormsOption): GlyphParagraph[] {
+  const forms = resolveVerticalForms(verticalForms);
   const paragraphs: GlyphParagraph[] = [];
   let glyphs: GlyphElement[] = [];
   for (let i = 0; i < ctx.runs.length; i++) {
     const run = ctx.runs[i];
     if (run.isNewline) {
-      if (glyphs.length === 0 && run.visibility === "visible") glyphs.push(toGlyphElement(ctx, i, " "));
+      if (glyphs.length === 0 && run.visibility === "visible") glyphs.push(toGlyphElement(ctx, i, " ", forms));
       if (glyphs.length > 0) paragraphs.push({ groups: groupGlyphs(glyphs) });
       glyphs = [];
       continue;
     }
     if (run.visibility === "invisible") continue;
-    glyphs.push(run.visibility === "ellipsis" ? toEllipsisElement(ctx, i) : toGlyphElement(ctx, i, run.char));
+    glyphs.push(run.visibility === "ellipsis" ? toEllipsisElement(ctx, i) : toGlyphElement(ctx, i, run.char, forms));
   }
   if (glyphs.length > 0) paragraphs.push({ groups: groupGlyphs(glyphs) });
   return paragraphs;
 }
 
 /** glyphElements の結果を、連続する同じフォント設定ごとにまとめる（段落には分けない）。 */
-export function glyphGroups(ctx: StoneContext): GlyphGroup[] {
-  return groupGlyphs(glyphElements(ctx));
+export function glyphGroups(ctx: StoneContext, verticalForms?: VerticalFormsOption): GlyphGroup[] {
+  return groupGlyphs(glyphElements(ctx, verticalForms));
 }
 
 /** 連続する同じフォント設定の描画要素をまとめる（font 属性 1 組ごと）。 */
@@ -224,7 +257,7 @@ function groupGlyphs(elements: GlyphElement[]): GlyphGroup[] {
 
 /** グループに指定する font-feature-settings。指定しないなら null。 */
 export function fontFeatureSettingsOf(group: GlyphGroup): string | null {
-  if (group.fullWidth) return FULL_WIDTH_VERTICAL_FEATURE_SETTINGS;
+  if (group.fullWidth) return group.vertical ? FULL_WIDTH_VERTICAL_FEATURE_SETTINGS : FULL_WIDTH_FEATURE_SETTINGS;
   return group.vertical ? VERTICAL_FEATURE_SETTINGS : null;
 }
 
@@ -252,6 +285,11 @@ export interface SvgStringOptions {
   className?: string;
   /** svg 要素に付ける追加属性。 */
   attributes?: Record<string, string | number>;
+  /**
+   * 縦書きの和文の縦組み用グリフの描き方。"feature" は font-feature-settings の vert、"emulated" は横組みのグリフの
+   * 回転と移動で代用する（vert が効かない Safari などの WebKit 用）。既定 "auto"（ブラウザに合わせる）。
+   */
+  verticalForms?: VerticalFormsOption;
 }
 
 /** テキストノード用に & < > をエスケープする。 */
@@ -307,7 +345,7 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
     parts.push("</g>");
   }
 
-  for (const paragraph of glyphParagraphs(ctx)) {
+  for (const paragraph of glyphParagraphs(ctx, options.verticalForms)) {
     parts.push('<text xml:space="preserve">');
     for (const group of paragraph.groups) {
       const gAttrs = [

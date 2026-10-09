@@ -1,0 +1,38 @@
+name: 改善・機能の提案
+description: 使いやすさの改善や、新しい機能を提案する
+title: "[提案] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ご提案ありがとうございます。具体的な利用場面も教えていただけると助かります。
+        同じ内容の Issue がないか、投稿前に確認していただけると助かります。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること・改善したいこと
+      description: 現在困っていることや、改善したい点を教えてください。
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: 希望する動作・機能
+      description: どのような動作や機能があると解決できそうかを教えてください。
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: 利用場面
+      description: どのようなサイトや文章で、どのように使いたいかを教えてください。
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 補足・参考資料
+      description: 参考になる URL、画像、表示例などがあれば追加してください。画像はこの欄にドラッグ＆ドロップできます。
+    validations:
+      required: false

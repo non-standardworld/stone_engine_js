@@ -1,0 +1,61 @@
+name: 不具合の報告
+description: 表示の崩れや、期待どおりに動かない問題を報告する
+title: "[不具合] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ご報告ありがとうございます。分かる範囲でご記入ください。
+        同じ内容の Issue がないか、投稿前に確認していただけると助かります。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 発生した問題
+      description: どのような問題が起きたかを教えてください。
+      placeholder: 例：縦書きで表示すると、句読点の位置がずれてしまう。
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 期待する表示・動作
+      description: 本来どのように表示・動作してほしいかを教えてください。
+    validations:
+      required: false
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 再現手順
+      description: 問題が起きる操作や、再現できるコード・URL があれば記載してください。
+      placeholder: |
+        1. …を開く
+        2. …を設定する
+        3. …の問題が起きる
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: ブラウザ・OS
+      description: 分かる範囲で、使用しているブラウザ・OS とそのバージョンを教えてください。
+      placeholder: |
+        ブラウザ：Safari など
+        OS：macOS、Windows、iOS、Android など
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Stone Engine のバージョン
+      description: npm パッケージなどを利用している場合は、分かる範囲で記載してください。
+      placeholder: 例：0.1.0
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: スクリーンショット・補足
+      description: 問題が分かる画像や、補足情報があれば追加してください。画像はこの欄にドラッグ＆ドロップできます。
+    validations:
+      required: false

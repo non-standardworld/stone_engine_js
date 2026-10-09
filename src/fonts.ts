@@ -4,10 +4,12 @@ fonts.ts — 文字種ごとのフォント解決とメトリクス取得。Swif
 Swift 版はフォント名のリストから「そのグリフを持つ最初のフォント」を選んでいたが、
 ブラウザでは CSS の font-family リストがグリフ単位のフォールバックを担うため、
 ここでは文字種（Script）ごとに 1 つのフォントスタックを持ち、fontId = 文字種の添字とする。
+<strong> などで太さ・スタイルを変えた文字は、文字種のフォントの太さ・スタイルだけを変えた変種で組む。変種は 3 文字種ぶんを
+まとめて作り、フォント ID は「変種の番号 × SCRIPTS.length + 文字種の添字」にする（通常のフォントは変種 0）。
 */
 
 import { SCRIPTS } from "./types.js";
-import type { FontMeasurer, FontMetrics, FontSpec, ResolvedFont, Script, StoneOptions } from "./types.js";
+import type { FontMeasurer, FontMetrics, FontSpec, FontStyle, ResolvedFont, Script, StoneOptions } from "./types.js";
 import { scriptOfChar } from "./unicode.js";
 
 /** 既定のフォント。Swift 版の HelveticaNeue / HiraginoSans-W3 / AppleColorEmoji に相当する Web 向けスタック。 */
@@ -61,6 +63,29 @@ export function fontIdForChar(char: string): number {
   return id < 0 ? 0 : id;
 }
 
+/** フォント ID の文字種の添字（SCRIPTS の添字）。変種（太字・斜体）のフォント ID でも、その文字種の添字を返す。 */
+export function scriptIndexOfFontId(fontId: number): number {
+  return fontId >= 0 ? fontId % SCRIPTS.length : 0;
+}
+
+/** フォント ID の文字種。 */
+export function scriptOfFontId(fontId: number): Script {
+  return SCRIPTS[scriptIndexOfFontId(fontId)];
+}
+
+/** fontId と同じ変種（太さ・スタイル）のまま、文字種を script にしたフォント ID。 */
+export function fontIdWithScript(fontId: number, script: Script): number {
+  return fontId - scriptIndexOfFontId(fontId) + SCRIPTS.indexOf(script);
+}
+
+/** font-weight を比べられる形にそろえる（"normal" は "400"、"bold" は "700"、数値は文字列）。 */
+function weightKey(weight: number | string): string {
+  const s = String(weight).trim().toLowerCase();
+  if (s === "normal") return "400";
+  if (s === "bold") return "700";
+  return s;
+}
+
 /** CSS の font ショートハンド文字列（canvas の ctx.font や document.fonts.load 用）。 */
 export function cssFontString(font: ResolvedFont, size: number): string {
   return `${font.style} ${font.weight} ${size}px ${font.family}`;
@@ -69,8 +94,12 @@ export function cssFontString(font: ResolvedFont, size: number): string {
 /**
  * フォントマネージャ。フォント ID からフォント・スケール・メトリクスを引く。
  * size にはレイアウト時のフォントサイズ（adjustFontSize）を渡す。文字種スケールは内部で掛ける。
+ * 変種（variantFontId）は fonts の末尾に追加していく。
  */
 export class FontManager {
+  /** 太さ・スタイルの組から変種の番号へ。 */
+  private readonly variants = new Map<string, number>();
+
   /** フォント一覧と計測器を持つ。 */
   constructor(
     public readonly fonts: ResolvedFont[],
@@ -80,6 +109,35 @@ export class FontManager {
   /** フォント ID のフォント。範囲外なら latin。 */
   font(fontId: number): ResolvedFont {
     return this.fonts[fontId] ?? this.fonts[0];
+  }
+
+  /**
+   * fontId の文字種で、通常のフォントの太さを weight、スタイルを style に変えた変種のフォント ID（省略したほうは通常のまま）。
+   * 初めての組なら 3 文字種ぶんの変種を fonts に追加する。どの文字種でも通常のフォントと同じになるなら通常のフォント ID を返す。
+   */
+  variantFontId(fontId: number, weight?: number | string, style?: FontStyle): number {
+    const scriptIndex = scriptIndexOfFontId(fontId);
+    const key = `${weight === undefined ? "" : weightKey(weight)}\t${style ?? ""}`;
+    let variant = this.variants.get(key);
+    if (variant === undefined) {
+      variant = this.addVariant(weight, style);
+      this.variants.set(key, variant);
+    }
+    return variant * SCRIPTS.length + scriptIndex;
+  }
+
+  /** 3 文字種ぶんの変種を fonts に追加して、その番号を返す。どの文字種でも通常のフォントと同じなら追加せずに 0 を返す。 */
+  private addVariant(weight: number | string | undefined, style: FontStyle | undefined): number {
+    const bases = SCRIPTS.map((_, i) => this.font(i));
+    const fonts = bases.map((base) => ({ ...base, weight: weight ?? base.weight, style: style ?? base.style }));
+    const same = fonts.every((font, i) => weightKey(font.weight) === weightKey(bases[i].weight) && font.style === bases[i].style);
+    if (same) return 0;
+    const variant = Math.ceil(this.fonts.length / SCRIPTS.length);
+    fonts.forEach((font, i) => {
+      font.id = variant * SCRIPTS.length + i;
+      this.fonts[font.id] = font;
+    });
+    return variant;
   }
 
   /** フォント ID の文字種。 */
@@ -103,9 +161,12 @@ export class FontManager {
     return this.measurer.advance(font, this.scaledSize(fontId, size), char);
   }
 
-  /** アセント／ディセント（px）。指定があれば比率、無ければ計測値を使う。 */
+  /**
+   * アセント／ディセント（px）。指定があれば比率、無ければ計測値を使う。
+   * 変種（太字・斜体）は通常のフォントのメトリクスを使い、太さが変わってもベースラインの位置を変えない。
+   */
   metrics(fontId: number, size: number): FontMetrics {
-    const font = this.font(fontId);
+    const font = this.font(scriptIndexOfFontId(fontId));
     const scaled = this.scaledSize(fontId, size);
     if (font.ascent !== undefined && font.descent !== undefined) {
       return { ascent: scaled * font.ascent, descent: scaled * font.descent };

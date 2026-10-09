@@ -4,7 +4,7 @@
 
 export * from "./types.js";
 export { StoneContext, DEFAULT_OPTIONS, type LineRange } from "./context.js";
-export { layoutText, relayout, sizeThatFits, measureRuns, type LayoutSize } from "./engine.js";
+export { applyFontStyleSpans, layoutText, relayout, sizeThatFits, measureRuns, type LayoutSize } from "./engine.js";
 export { Layouter } from "./layout.js";
 export { parseText, splitGraphemes, splitWords, supportsWordSegmentation, type ParseResult } from "./parser.js";
 export {
@@ -14,7 +14,10 @@ export {
   JAPANESE_DESCENT_RATIO,
   cssFontString,
   fontIdForChar,
+  fontIdWithScript,
   resolveFonts,
+  scriptIndexOfFontId,
+  scriptOfFontId,
 } from "./fonts.js";
 export {
   HORIZONTAL_ELLIPSIS,

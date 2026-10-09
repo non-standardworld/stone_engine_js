@@ -11,7 +11,7 @@ import type { StoneContext } from "./context.js";
 import { layoutText, type LayoutSize } from "./engine.js";
 import { cssFontString } from "./fonts.js";
 import { getSharedCanvasMeasurer } from "./measure/canvas.js";
-import type { Direction, FontMeasurer, Size, StoneOptions } from "./types.js";
+import type { Direction, FontMeasurer, FontStyleSpan, Size, StoneOptions } from "./types.js";
 
 /** サイズ指定。number は px、"auto" は制限なし、"container" はコンテナ要素の大きさ。 */
 export type SizeSpec = number | "auto" | "container";
@@ -20,6 +20,8 @@ export interface ControllerInput {
   text: string;
   options: StoneOptions;
   size: LayoutSize;
+  /** フォントの太さ・スタイルを変える範囲（<strong>、<em> など）。StoneSpan の配列をそのまま渡してもよい。 */
+  spans?: readonly FontStyleSpan[];
 }
 
 export interface ControllerOptions {
@@ -93,8 +95,8 @@ export class StoneTextController {
   /** 現在の入力でレイアウトし、結果を onLayout に渡す。 */
   private relayout(): StoneContext | null {
     if (this.disposed || !this.measurer || !this.input) return null;
-    const { text, options, size } = this.input;
-    const ctx = layoutText(text, options, this.measurer, size);
+    const { text, options, size, spans } = this.input;
+    const ctx = layoutText(text, options, this.measurer, size, spans);
     this.onLayout(ctx);
     return ctx;
   }

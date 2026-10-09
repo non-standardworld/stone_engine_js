@@ -73,6 +73,15 @@ describe("StoneSVG", () => {
     expectSameSvg(lay("詳細はリンク先\nを見て、ここも", {}, { width: 60 }), false, spans);
     expectSameSvg(lay("詳細はリンク先\nを見て、ここも", { direction: "tbRl" }, { height: 60 }), false, spans);
   });
+
+  it("renders bold and italic characters the same way", () => {
+    const spans: StoneSpan[] = [
+      { start: 2, end: 9, fontWeight: "700" },
+      { start: 5, end: 7, fontStyle: "italic", href: "/b" },
+    ];
+    expectSameSvg(lay("普通太字 Bold です", {}, { width: 60 }, spans), false, spans);
+    expectSameSvg(lay("普通太字 Bold です", { direction: "tbRl" }, { height: 60 }, spans), false, spans);
+  });
 });
 
 describe("StoneSVG verticalForms", () => {

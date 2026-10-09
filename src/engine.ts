@@ -5,7 +5,8 @@ engine.ts — 解析・計測・レイアウトをまとめた入口。Swift 版
 import { StoneContext } from "./context.js";
 import { Layouter } from "./layout.js";
 import { parseText } from "./parser.js";
-import type { FontMeasurer, Size, StoneOptions } from "./types.js";
+import { spanStacks } from "./render/spans.js";
+import type { FontMeasurer, FontStyle, FontStyleSpan, Size, StoneOptions } from "./types.js";
 
 export interface LayoutSize {
   /** 折り返し幅（px）。省略または Infinity で折り返しなし。 */
@@ -26,6 +27,25 @@ export function measureRuns(ctx: StoneContext): void {
     else if (ctx.usesFullWidthGlyph(run)) run.advance = fm.scaledSize(run.fontId, size);
     else run.advance = fm.advance(run.fontId, size, run.char);
   }
+}
+
+/**
+ * 範囲ごとのフォントの太さ・スタイル（<strong>、<em> など）を run に反映する。run は文字種のまま、その run を含む範囲のうち
+ * 最も内側の指定（太さとスタイルは別々に探す）の変種のフォントにする。送り幅は measureRuns がその変種で計測する。
+ */
+export function applyFontStyleSpans(ctx: StoneContext, spans: readonly FontStyleSpan[] | undefined): void {
+  const styled = spans?.filter((span) => span.fontWeight !== undefined || span.fontStyle !== undefined) ?? [];
+  if (styled.length === 0) return;
+  const stacks = spanStacks(ctx, styled);
+  ctx.runs.forEach((run, i) => {
+    let weight: number | string | undefined;
+    let style: FontStyle | undefined;
+    for (const index of stacks[i]) {
+      weight = styled[index].fontWeight ?? weight;
+      style = styled[index].fontStyle ?? style;
+    }
+    if (weight !== undefined || style !== undefined) run.fontId = ctx.fontManager.variantFontId(run.fontId, weight, style);
+  });
 }
 
 /** 縮小率を設定して計測とレイアウトを行い、収まったかどうかを返す。 */
@@ -77,18 +97,21 @@ function layoutToFit(ctx: StoneContext): void {
  * @param options レイアウト設定
  * @param measurer フォント計測（ブラウザなら getSharedCanvasMeasurer()）
  * @param size レイアウト領域
+ * @param spans フォントの太さ・スタイルを変える範囲（<strong>、<em> など）。StoneSpan の配列をそのまま渡してもよい
  */
 export function layoutText(
   text: string | null | undefined,
   options: StoneOptions,
   measurer: FontMeasurer,
   size: LayoutSize = {},
+  spans?: readonly FontStyleSpan[],
 ): StoneContext {
   const ctx = new StoneContext(options, measurer);
   ctx.renderSize = normalizeSize(size);
   const parsed = parseText(text, ctx.dividesByWords);
   ctx.runs = parsed.runs;
   ctx.tokens = parsed.tokens;
+  applyFontStyleSpans(ctx, spans);
   ctx.lineCount = 0;
   ctx.adjustFontScale = 1;
   layoutToFit(ctx);
@@ -108,8 +131,9 @@ export function sizeThatFits(
   options: StoneOptions,
   measurer: FontMeasurer,
   size: LayoutSize = {},
+  spans?: readonly FontStyleSpan[],
 ): Size {
-  return layoutText(text, options, measurer, size).renderedSize;
+  return layoutText(text, options, measurer, size, spans).renderedSize;
 }
 
 /** 省略・0・非有限の寸法を Infinity（制限なし）にそろえる。 */

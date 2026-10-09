@@ -3,9 +3,15 @@ react/index.tsx — React 用コンポーネントとフック。
 
 <StoneText> はコンテナ div の中に、レイアウト結果を SVG として描画する。
 SSR 時とフォント読み込み前は通常のテキスト（フォールバック）を描画し、クライアントでレイアウトできた時点で SVG に置き換わる。
+children に要素（<a>、<strong>、<Link> など）を渡したときは、それを描画したスクリーンリーダー用の要素からテキストと
+リンク・文字色・線を読み取り（render/spans.ts の readStoneSource）、SVG に重ねる。SVG のリンクをクリックすると、
+元の <a> をクリックしたことにする（ルーターのリンクもそのまま動く）。キーボードのフォーカスは元の <a> が受け、SVG に枠を描く。
 */
 
 import {
+  Children,
+  Fragment,
+  isValidElement,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -13,6 +19,9 @@ import {
   useState,
   type ClipboardEvent,
   type CSSProperties,
+  type FocusEvent,
+  type MouseEvent,
+  type ReactElement,
   type ReactNode,
   type RefObject,
   type SVGProps,
@@ -20,12 +29,17 @@ import {
 import { resolveLayoutSize, StoneTextController, type SizeSpec } from "../controller.js";
 import type { StoneContext } from "../context.js";
 import { handleStoneCopy } from "../render/copy.js";
+import { decorationRects, readStoneSource, sameSpans, spanRects, type StoneSpan } from "../render/spans.js";
 import {
   DEFAULT_FRAME_COLOR,
   fontFeatureSettingsOf,
   glyphParagraphs,
+  isSafeHref,
+  nestGlyphGroups,
   svgOverflow,
   svgSize,
+  type GlyphGroup,
+  type GlyphNode,
 } from "../render/svg.js";
 import type { VerticalFormsOption } from "../render/vertical.js";
 import { resolveFonts } from "../fonts.js";
@@ -33,6 +47,7 @@ import type { FontMeasurer, Size, StoneOptions } from "../types.js";
 
 export type { SizeSpec } from "../controller.js";
 export type { StoneContext } from "../context.js";
+export type { StoneSpan } from "../render/spans.js";
 
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -81,7 +96,8 @@ function useContainerSize(ref: RefObject<HTMLElement | null>, enabled: boolean):
 }
 
 export interface UseStoneLayoutArgs {
-  text: string;
+  /** 組むテキスト。null のあいだはレイアウトしない。 */
+  text: string | null;
   options?: StoneOptions;
   /** 既定: 横書きは "container"（containerRef の幅）、縦書きは "auto"（内容に合わせて伸びる）。 */
   width?: SizeSpec;
@@ -121,7 +137,7 @@ export function useStoneLayout(args: UseStoneLayoutArgs): StoneContext | null {
 
   useEffect(() => {
     const controller = controllerRef.current;
-    if (!controller || !controller.isAvailable) return;
+    if (!controller || !controller.isAvailable || text === null) return;
     const direction = stableOptions.direction ?? "lrTb";
     const size = resolveLayoutSize(direction, width, height, containerSize);
     if (!size) return;
@@ -143,7 +159,75 @@ export interface StoneSVGProps extends Omit<SVGProps<SVGSVGElement>, "width" | "
    * 回転と移動で代用する（vert が効かない Safari などの WebKit 用）。既定 "auto"（ブラウザに合わせる）。
    */
   verticalForms?: VerticalFormsOption;
+  /** リンク・文字色・線を付ける範囲（元のテキストの位置で指定する）。 */
+  spans?: readonly StoneSpan[];
+  /** フォーカスの枠を描く範囲（spans の添字）。 */
+  focusedSpan?: number | null;
+  /** SVG のリンクを Tab キーでフォーカスできるようにする。既定 true（<StoneText> は元の <a> がフォーカスを受けるので false）。 */
+  linksFocusable?: boolean;
+  /** SVG のリンクがクリックされたとき（spanIndex は spans の添字）。preventDefault すると移動しない。 */
+  onLinkClick?: (event: MouseEvent<SVGAElement>, spanIndex: number) => void;
 }
+
+/** SVG の <a>。JSX の <a> は HTML の型になるので、同じ "a" を SVG の props で使えるようにする（描画は親の SVG の名前空間になる）。 */
+const SvgAnchor = "a" as unknown as (props: SVGProps<SVGAElement> & { rel?: string }) => ReactElement;
+
+/** 範囲の節を SVG の要素にする。リンクは <a>、それ以外は <tspan>。 */
+function renderGlyphNodes(nodes: GlyphNode[], props: Pick<StoneSVGProps, "spans" | "linksFocusable" | "onLinkClick">): ReactNode {
+  return nodes.map((node, i) => {
+    if (node.type === "group") return renderGlyphGroup(node.group, i);
+    const span = props.spans?.[node.span];
+    const children = renderGlyphNodes(node.children, props);
+    if (!span) return <Fragment key={i}>{children}</Fragment>;
+    if (span.href !== undefined && isSafeHref(span.href)) {
+      const index = node.span;
+      return (
+        <SvgAnchor
+          key={i}
+          href={span.href}
+          target={span.target}
+          rel={span.rel}
+          className={span.className}
+          fill={span.color}
+          data-span={index}
+          tabIndex={props.linksFocusable === false ? -1 : undefined}
+          onClick={props.onLinkClick ? (e) => props.onLinkClick?.(e, index) : undefined}
+        >
+          {children}
+        </SvgAnchor>
+      );
+    }
+    return (
+      <tspan key={i} className={span.className} fill={span.color} data-span={node.span}>
+        {children}
+      </tspan>
+    );
+  });
+}
+
+/** 同じフォント設定の文字のまとまりを <tspan> にする。 */
+function renderGlyphGroup(group: GlyphGroup, key: number): ReactNode {
+  const features = fontFeatureSettingsOf(group);
+  return (
+    <tspan
+      key={key}
+      fontFamily={group.fontFamily}
+      fontSize={group.fontSize}
+      fontWeight={group.fontWeight}
+      fontStyle={group.fontStyle}
+      style={features ? { fontFeatureSettings: features } : undefined}
+    >
+      {group.glyphs.map((el) => (
+        <tspan key={el.runId} x={el.x} y={el.y} rotate={el.rotate || undefined} data-run={el.runId}>
+          {el.text}
+        </tspan>
+      ))}
+    </tspan>
+  );
+}
+
+/** フォーカスの枠と仮想ボディの間の余白（px）。 */
+const FOCUS_RING_GAP = 2;
 
 /**
  * レイアウト結果を SVG として描画する表示専用コンポーネント。
@@ -155,12 +239,18 @@ export function StoneSVG({
   showFrames = false,
   frameColor = DEFAULT_FRAME_COLOR,
   verticalForms,
+  spans,
+  focusedSpan = null,
+  linksFocusable = true,
+  onLinkClick,
   style,
   onCopy,
   ...rest
 }: StoneSVGProps) {
   const size = svgSize(layout);
-  const paragraphs = glyphParagraphs(layout, verticalForms);
+  const paragraphs = glyphParagraphs(layout, { verticalForms, spans });
+  const decorations = decorationRects(layout, spans);
+  const focusRects = spans && focusedSpan !== null && spans[focusedSpan] ? spanRects(layout, spans, focusedSpan) : [];
   const handleCopy = (e: ClipboardEvent<SVGSVGElement>) => {
     onCopy?.(e);
     if (e.isDefaultPrevented() || e.nativeEvent.defaultPrevented) return;
@@ -201,27 +291,38 @@ export function StoneSVG({
       )}
       {paragraphs.map((paragraph, pi) => (
         <text key={pi} xmlSpace="preserve">
-          {paragraph.groups.map((group, gi) => {
-            const features = fontFeatureSettingsOf(group);
-            return (
-              <tspan
-                key={gi}
-                fontFamily={group.fontFamily}
-                fontSize={group.fontSize}
-                fontWeight={group.fontWeight}
-                fontStyle={group.fontStyle}
-                style={features ? { fontFeatureSettings: features } : undefined}
-              >
-                {group.glyphs.map((el) => (
-                  <tspan key={el.runId} x={el.x} y={el.y} rotate={el.rotate || undefined} data-run={el.runId}>
-                    {el.text}
-                  </tspan>
-                ))}
-              </tspan>
-            );
-          })}
+          {renderGlyphNodes(nestGlyphGroups(paragraph.groups), { spans, linksFocusable, onLinkClick })}
         </text>
       ))}
+      {decorations.length > 0 && (
+        <g className="stone-decorations">
+          {decorations.map((d, i) => (
+            <rect
+              key={i}
+              x={d.x}
+              y={d.y}
+              width={d.width}
+              height={d.height}
+              fill={d.color ?? undefined}
+              data-span={d.spanIndex}
+            />
+          ))}
+        </g>
+      )}
+      {focusRects.length > 0 && (
+        <g className="stone-focus-ring" fill="none" stroke="Highlight" strokeWidth={2} pointerEvents="none">
+          {focusRects.map((r, i) => (
+            <rect
+              key={i}
+              x={r.x - FOCUS_RING_GAP}
+              y={r.y - FOCUS_RING_GAP}
+              width={r.width + FOCUS_RING_GAP * 2}
+              height={r.height + FOCUS_RING_GAP * 2}
+              rx={2}
+            />
+          ))}
+        </g>
+      )}
     </svg>
   );
 }
@@ -229,6 +330,10 @@ export function StoneSVG({
 export interface StoneTextProps extends StoneOptions {
   /** 組むテキスト。children に文字列を渡してもよい。 */
   text?: string;
+  /**
+   * 組むテキスト。<a>、<strong>、<Link> などの要素を含めてもよい。要素の中のテキストも組み、リンクと、CSS で決まった
+   * 文字色・下線・打ち消し線を SVG に反映する（太字や斜体など送り幅が変わるものは反映しない）。<br> は改行になる。
+   */
   children?: ReactNode;
   /** 既定: 横書きは "container"（コンポーネントの幅）、縦書きは "auto"（内容に合わせて左に伸びる）。 */
   width?: SizeSpec;
@@ -249,15 +354,44 @@ export interface StoneTextProps extends StoneOptions {
   onLayout?: (layout: StoneContext) => void;
   measurer?: FontMeasurer | null;
   /** svg 要素への追加 props。 */
-  svgProps?: Omit<StoneSVGProps, "layout" | "color" | "showFrames">;
+  svgProps?: Omit<StoneSVGProps, "layout" | "color" | "showFrames" | "spans" | "focusedSpan">;
 }
 
-/** children に渡された文字列・数値・配列を 1 つのテキストにする。要素は無視する。 */
-function childrenToString(children: ReactNode): string {
-  if (children == null || typeof children === "boolean") return "";
-  if (typeof children === "string" || typeof children === "number") return String(children);
-  if (Array.isArray(children)) return children.map(childrenToString).join("");
-  return "";
+/**
+ * children が文字列・数値（と、その配列やフラグメント）だけなら、それをつなげたテキスト。
+ * 要素を含むなら null（描画した DOM から読み取る）。
+ */
+function plainTextOf(children: ReactNode): string | null {
+  let text = "";
+  let plain = true;
+  const visit = (node: ReactNode): void => {
+    if (!plain || node == null || typeof node === "boolean") return;
+    if (typeof node === "string" || typeof node === "number") {
+      text += String(node);
+    } else if (Array.isArray(node)) {
+      node.forEach(visit);
+    } else if (isValidElement<{ children?: ReactNode }>(node) && node.type === Fragment) {
+      Children.forEach(node.props.children, visit);
+    } else {
+      plain = false;
+    }
+  };
+  visit(children);
+  return plain ? text : null;
+}
+
+/** キーボードで移ったフォーカスかどうか（:focus-visible を知らない古いブラウザでは常に true）。 */
+function isFocusVisible(el: Element): boolean {
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return true;
+  }
+}
+
+/** 修飾キーを押していない、主ボタンのクリックかどうか（新しいタブで開くなどはブラウザに任せる）。 */
+function isPlainClick(e: MouseEvent<Element>): boolean {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 }
 
 /**
@@ -279,9 +413,51 @@ export function StoneText(props: StoneTextProps) {
     svgProps,
     ...options
   } = props;
-  const content = text ?? childrenToString(children);
+  const plain = text ?? plainTextOf(children);
   const ref = useRef<HTMLDivElement | null>(null);
+
+  // children に要素があれば、描画したスクリーンリーダー用の要素（レイアウト前はフォールバック）から読み取る
+  const sourceRef = useRef<HTMLElement | null>(null);
+  const setSourceElement = (el: HTMLElement | null) => {
+    sourceRef.current = el;
+  };
+  const sourceElements = useRef<Element[]>([]);
+  const [source, setSource] = useState<{ text: string; spans: StoneSpan[] } | null>(null);
+  useIsomorphicLayoutEffect(() => {
+    const el = sourceRef.current;
+    if (plain !== null || !el) {
+      sourceElements.current = [];
+      return;
+    }
+    const next = readStoneSource(el);
+    sourceElements.current = next.elements;
+    setSource((prev) => (prev && prev.text === next.text && sameSpans(prev.spans, next.spans) ? prev : next));
+  });
+  const content = plain ?? source?.text ?? null;
+  const spans = plain === null ? source?.spans : undefined;
+  const sourceContent = plain ?? children;
+
   const layout = useStoneLayout({ text: content, options, width, height, containerRef: ref, measurer });
+
+  // キーボードで元の <a> にフォーカスしたとき、SVG のリンクに枠を描く
+  const [focusedSpan, setFocusedSpan] = useState<number | null>(null);
+  const handleSourceFocus = (e: FocusEvent<HTMLElement>) => {
+    const index = sourceElements.current.indexOf(e.target);
+    setFocusedSpan(index >= 0 && isFocusVisible(e.target) ? index : null);
+  };
+  const handleSourceBlur = () => setFocusedSpan(null);
+  // SVG のリンクをクリックしたら、元の <a> をクリックしたことにする（React Router の <Link> などの onClick も動く）。
+  // 親の要素や document のリスナーには元の <a> のクリックだけが届くよう、SVG のクリックはここで止める
+  // （React のルートが document のときは、同じ document の後から登録されたリスナーも止める）
+  const handleLinkClick = (e: MouseEvent<SVGAElement>, spanIndex: number) => {
+    svgProps?.onLinkClick?.(e, spanIndex);
+    const target = sourceElements.current[spanIndex];
+    if (e.defaultPrevented || !isPlainClick(e) || !(target instanceof HTMLElement)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
+    target.click();
+  };
 
   // onLayout の参照が変わっただけでは再通知しない（呼び出し側の useCallback に依存しない）
   const onLayoutRef = useRef(onLayout);
@@ -315,18 +491,33 @@ export function StoneText(props: StoneTextProps) {
     >
       {layout ? (
         <>
-          <span className="stone-text__source" style={SR_SOURCE}>
-            {content}
+          <span
+            ref={setSourceElement}
+            className="stone-text__source"
+            style={SR_SOURCE}
+            onFocus={handleSourceFocus}
+            onBlur={handleSourceBlur}
+          >
+            {sourceContent}
           </span>
-          <StoneSVG layout={layout} color={color} showFrames={showFrames} {...svgProps} />
+          <StoneSVG
+            layout={layout}
+            color={color}
+            showFrames={showFrames}
+            {...svgProps}
+            spans={spans}
+            focusedSpan={focusedSpan}
+            linksFocusable={false}
+            onLinkClick={handleLinkClick}
+          />
         </>
       ) : fallback === "none" ? (
-        <span className="stone-text__source" style={SR_ONLY}>
-          {content}
+        <span ref={setSourceElement} className="stone-text__source" style={SR_ONLY}>
+          {sourceContent}
         </span>
       ) : (
-        <p className="stone-text__fallback" style={fallbackStyle}>
-          {content}
+        <p ref={setSourceElement} className="stone-text__fallback" style={fallbackStyle}>
+          {sourceContent}
         </p>
       )}
     </div>

@@ -13,7 +13,7 @@ import { lay, runOf } from "./helpers.js";
 /** 文字の描画要素。 */
 function glyphOf(ctx: StoneContext, char: string, forms: "feature" | "emulated"): GlyphElement {
   const { id } = runOf(ctx, char);
-  const el = glyphElements(ctx, forms).find((g) => g.runId === id);
+  const el = glyphElements(ctx, { verticalForms: forms }).find((g) => g.runId === id);
   if (!el) throw new Error(`glyph not found: ${char}`);
   return el;
 }
@@ -64,7 +64,7 @@ describe("emulated vertical glyphs", () => {
 
   it("leaves other characters where they are and keeps the source text", () => {
     const ctx = lay("あ「い、う」", { direction: "tbRl" });
-    const emulated = glyphElements(ctx, "emulated");
+    const emulated = glyphElements(ctx, { verticalForms: "emulated" });
     expect(emulated.map((el) => el.text).join("")).toBe("あ「い、う」");
     const a = emulated[0];
     expect(a).toMatchObject({ x: ctx.runs[0].position.x, y: ctx.runs[0].position.y, rotate: 0, vertical: false });
@@ -82,7 +82,7 @@ describe("emulated vertical glyphs", () => {
 
   it("keeps using vert in the feature mode", () => {
     const ctx = lay("あ「い、っ」", { direction: "tbRl" });
-    const groups = glyphParagraphs(ctx, "feature")[0].groups;
+    const groups = glyphParagraphs(ctx, { verticalForms: "feature" })[0].groups;
     expect(groups).toHaveLength(1);
     expect(groups[0]).toMatchObject({ vertical: true });
     expect(groups[0].glyphs.every((el) => el.rotate === 0)).toBe(true);
@@ -91,9 +91,13 @@ describe("emulated vertical glyphs", () => {
 
   it("does not change horizontal text or rotated latin text", () => {
     const horizontal = lay("あ「い、っ」");
-    expect(glyphElements(horizontal, "emulated")).toEqual(glyphElements(horizontal, "feature"));
+    expect(glyphElements(horizontal, { verticalForms: "emulated" })).toEqual(
+      glyphElements(horizontal, { verticalForms: "feature" }),
+    );
     const latin = lay("Hello", { direction: "tbRl" });
-    expect(glyphElements(latin, "emulated")).toEqual(glyphElements(latin, "feature"));
+    expect(glyphElements(latin, { verticalForms: "emulated" })).toEqual(
+      glyphElements(latin, { verticalForms: "feature" }),
+    );
   });
 });
 

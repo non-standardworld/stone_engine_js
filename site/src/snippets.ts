@@ -133,7 +133,7 @@ export interface PropRow {
 }
 
 export const PROPS: PropRow[] = [
-  { name: "text / children", def: "", desc: "組むテキスト" },
+  { name: "text / children", def: "", desc: "組むテキスト。children には <a>（React Router の <Link> も）や <span style>、<u>、<s> を含められ、リンク・文字色・下線・打ち消し線を SVG に反映する（太字・斜体はまだ反映しない）" },
   { name: "direction", def: '"lrTb"', desc: '"lrTb" 横書き、"tbRl" 縦書き' },
   { name: "fontSize", def: "17", desc: "フォントサイズ（px）" },
   { name: "lineHeightScale", def: "1", desc: "行送り（フォントサイズに対する倍率）" },

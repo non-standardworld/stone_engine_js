@@ -52,15 +52,28 @@ export {
   glyphElements,
   glyphGroups,
   glyphParagraphs,
+  isSafeHref,
   isSafeSvgAttributeName,
+  nestGlyphGroups,
   svgOverflow,
   svgSize,
   svgString,
   type GlyphElement,
   type GlyphGroup,
+  type GlyphNode,
+  type GlyphOptions,
   type GlyphParagraph,
   type SvgStringOptions,
 } from "./render/svg.js";
+export {
+  decorationRects,
+  readStoneSource,
+  spanRects,
+  spanStacks,
+  type DecorationRect,
+  type StoneSource,
+  type StoneSpan,
+} from "./render/spans.js";
 export {
   detectVerticalForms,
   resolveVerticalForms,

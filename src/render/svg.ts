@@ -5,6 +5,7 @@ Swift 版は CoreText でグリフを直接描いていたが、Web ではブラ
 1 文字ごとに <tspan x y> を置き、縦書きの欧文は rotate="90"、和文は font-feature-settings の vert で縦組み用グリフに置き換える。
 縦書きの和文の引用符「“」「”」「‘」「’」は、fwid で全角の字形にしてから vert で縦組み用グリフ（〝〟の形）にする。
 vert が効かない Safari などの WebKit では、縦組み用グリフを横組みのグリフの回転と移動で描く（render/vertical.ts）。
+リンク・文字色の範囲（render/spans.ts）は、その範囲の文字の <tspan> を <a> / <tspan> で囲み、線は <text> の後ろに矩形で描く。
 
 <text> は改行で区切った段落ごとに 1 つにまとめる。Chrome / Safari は SVG の <text> をブロックとして扱い、
 選択範囲をコピーするときに <text> の境目ごとに改行を入れるため、1 文字ごとに <text> を分けると
@@ -15,6 +16,7 @@ vert が効かない Safari などの WebKit では、縦組み用グリフを�
 import type { StoneContext } from "../context.js";
 import { HORIZONTAL_ELLIPSIS, isSpaceChar, VERTICAL_ELLIPSIS } from "../punctuation.js";
 import { SCRIPTS, type Run, type Size } from "../types.js";
+import { columnLeft, decorationRects, spanStacks, type StoneSpan } from "./spans.js";
 import { resolveVerticalForms, verticalGlyphTransform, type VerticalForms, type VerticalFormsOption } from "./vertical.js";
 
 /** 和文フォントの ID（フォント ID は SCRIPTS の添字と一致する）。縦書きの省略記号はこのフォントで描く。 */
@@ -57,6 +59,8 @@ export interface GlyphElement {
   /** 全角の字形（fwid）を使う（縦書きの和文の引用符）。 */
   fullWidth: boolean;
   line: number;
+  /** この文字を含む範囲（GlyphOptions の spans の添字、外側から順）。 */
+  spans: readonly number[];
 }
 
 export interface GlyphGroup {
@@ -68,7 +72,17 @@ export interface GlyphGroup {
   vertical: boolean;
   /** 全角の字形（fwid）を使う。 */
   fullWidth: boolean;
+  /** グループの文字を含む範囲（GlyphOptions の spans の添字、外側から順）。 */
+  spans: readonly number[];
   glyphs: GlyphElement[];
+}
+
+/** 描画要素の作り方。 */
+export interface GlyphOptions {
+  /** 縦書きの和文の縦組み用グリフの描き方（render/vertical.ts）。既定 "auto"（ブラウザに合わせる）。 */
+  verticalForms?: VerticalFormsOption;
+  /** リンク・文字色などを付ける範囲（render/spans.ts）。範囲が変わるところでグループを分ける。 */
+  spans?: readonly StoneSpan[];
 }
 
 /** 改行で区切られた段落。SVG では段落ごとに 1 つの <text> にする。 */
@@ -99,8 +113,11 @@ function glyphElement(ctx: StoneContext, runId: number, text: string, placement:
     vertical: placement.vertical,
     fullWidth: placement.fullWidth,
     line: run.line,
+    spans: NO_SPANS,
   };
 }
+
+const NO_SPANS: readonly number[] = [];
 
 /** run をそのフォント・位置で描く描画要素にする。text は実際に描く文字列。 */
 function toGlyphElement(ctx: StoneContext, runId: number, text: string, forms: VerticalForms): GlyphElement {
@@ -167,30 +184,26 @@ function toEllipsisElement(ctx: StoneContext, runId: number): GlyphElement {
   });
 }
 
-/** 縦書きで run がある列の左端。縦中横は列の中央に寄せてあるので、そのトークンの中央から求める。 */
-function columnLeft(ctx: StoneContext, run: Run): number {
-  if (!ctx.isTateChuYoko(run)) return run.frame.x;
-  const token = ctx.tokens[run.tokenId];
-  const first = ctx.runs[token.start].frame;
-  const last = ctx.runs[token.end - 1].frame;
-  return (first.x + last.x + last.width - ctx.adjustFontSize) * 0.5;
+/** 描画要素に、その文字を含む範囲を付ける。 */
+function withSpans(el: GlyphElement, stacks: number[][]): GlyphElement {
+  const stack = stacks[el.runId];
+  if (stack && stack.length > 0) el.spans = stack;
+  return el;
 }
 
-/**
- * 描画対象の run を描画要素に変換する。改行や空白、非表示の run は含まれない。
- * verticalForms は縦書きの和文の縦組み用グリフの描き方（既定はブラウザに合わせる。render/vertical.ts）。
- */
-export function glyphElements(ctx: StoneContext, verticalForms?: VerticalFormsOption): GlyphElement[] {
-  const forms = resolveVerticalForms(verticalForms);
+/** 描画対象の run を描画要素に変換する。改行や空白、非表示の run は含まれない。 */
+export function glyphElements(ctx: StoneContext, options: GlyphOptions = {}): GlyphElement[] {
+  const forms = resolveVerticalForms(options.verticalForms);
+  const stacks = spanStacks(ctx, options.spans);
   const elements: GlyphElement[] = [];
   for (let i = 0; i < ctx.runs.length; i++) {
     const run = ctx.runs[i];
     if (run.visibility === "invisible") continue;
     if (run.isNewline) continue;
     if (run.visibility === "ellipsis") {
-      elements.push(toEllipsisElement(ctx, i));
+      elements.push(withSpans(toEllipsisElement(ctx, i), stacks));
     } else if (!isSpaceChar(run.char)) {
-      elements.push(toGlyphElement(ctx, i, run.char, forms));
+      elements.push(withSpans(toGlyphElement(ctx, i, run.char, forms), stacks));
     }
   }
   return elements;
@@ -201,31 +214,38 @@ export function glyphElements(ctx: StoneContext, verticalForms?: VerticalFormsOp
  * glyphElements と違って空白の run も含める（見た目は変わらないが、選択してコピーしたときに空白が残る）。
  * 空行は、その行の改行の run を空白 1 つとして置く（コピーしたときに空行が詰まらないように）。
  */
-export function glyphParagraphs(ctx: StoneContext, verticalForms?: VerticalFormsOption): GlyphParagraph[] {
-  const forms = resolveVerticalForms(verticalForms);
+export function glyphParagraphs(ctx: StoneContext, options: GlyphOptions = {}): GlyphParagraph[] {
+  const forms = resolveVerticalForms(options.verticalForms);
+  const stacks = spanStacks(ctx, options.spans);
   const paragraphs: GlyphParagraph[] = [];
   let glyphs: GlyphElement[] = [];
   for (let i = 0; i < ctx.runs.length; i++) {
     const run = ctx.runs[i];
     if (run.isNewline) {
-      if (glyphs.length === 0 && run.visibility === "visible") glyphs.push(toGlyphElement(ctx, i, " ", forms));
+      if (glyphs.length === 0 && run.visibility === "visible") glyphs.push(toGlyphElement(ctx, i, " ", forms)); // 空行は範囲に含めない
       if (glyphs.length > 0) paragraphs.push({ groups: groupGlyphs(glyphs) });
       glyphs = [];
       continue;
     }
     if (run.visibility === "invisible") continue;
-    glyphs.push(run.visibility === "ellipsis" ? toEllipsisElement(ctx, i) : toGlyphElement(ctx, i, run.char, forms));
+    const el = run.visibility === "ellipsis" ? toEllipsisElement(ctx, i) : toGlyphElement(ctx, i, run.char, forms);
+    glyphs.push(withSpans(el, stacks));
   }
   if (glyphs.length > 0) paragraphs.push({ groups: groupGlyphs(glyphs) });
   return paragraphs;
 }
 
 /** glyphElements の結果を、連続する同じフォント設定ごとにまとめる（段落には分けない）。 */
-export function glyphGroups(ctx: StoneContext, verticalForms?: VerticalFormsOption): GlyphGroup[] {
-  return groupGlyphs(glyphElements(ctx, verticalForms));
+export function glyphGroups(ctx: StoneContext, options: GlyphOptions = {}): GlyphGroup[] {
+  return groupGlyphs(glyphElements(ctx, options));
 }
 
-/** 連続する同じフォント設定の描画要素をまとめる（font 属性 1 組ごと）。 */
+/** 2 つの範囲の並び（外側から順の添字）が同じかどうか。 */
+function sameStack(a: readonly number[], b: readonly number[]): boolean {
+  return a === b || (a.length === b.length && a.every((v, i) => v === b[i]));
+}
+
+/** 連続する同じフォント設定・同じ範囲の描画要素をまとめる（font 属性 1 組ごと）。 */
 function groupGlyphs(elements: GlyphElement[]): GlyphGroup[] {
   const groups: GlyphGroup[] = [];
   let current: GlyphGroup | null = null;
@@ -235,7 +255,8 @@ function groupGlyphs(elements: GlyphElement[]): GlyphGroup[] {
       current.fontId === el.fontId &&
       current.vertical === el.vertical &&
       current.fullWidth === el.fullWidth &&
-      current.fontSize === el.fontSize
+      current.fontSize === el.fontSize &&
+      sameStack(current.spans, el.spans)
     ) {
       current.glyphs.push(el);
       continue;
@@ -248,11 +269,43 @@ function groupGlyphs(elements: GlyphElement[]): GlyphGroup[] {
       fontStyle: el.fontStyle,
       vertical: el.vertical,
       fullWidth: el.fullWidth,
+      spans: el.spans,
       glyphs: [el],
     };
     groups.push(current);
   }
   return groups;
+}
+
+/** 段落の中身の木。範囲（span）の節は、その範囲の文字のグループ（と内側の範囲）を子に持つ。 */
+export type GlyphNode = { type: "span"; span: number; children: GlyphNode[] } | { type: "group"; group: GlyphGroup };
+
+/**
+ * 段落のグループを、範囲の入れ子に沿った木にする（SVG の <a> / <tspan> の入れ子）。
+ * 入れ子にならない範囲どうしが重なるときは、外側の範囲を閉じて開き直すので、同じ範囲の節が複数できることがある。
+ */
+export function nestGlyphGroups(groups: readonly GlyphGroup[]): GlyphNode[] {
+  const root: GlyphNode[] = [];
+  const open: { span: number; children: GlyphNode[] }[] = [];
+  for (const group of groups) {
+    let common = 0;
+    while (common < open.length && common < group.spans.length && open[common].span === group.spans[common]) common++;
+    open.length = common;
+    for (let i = common; i < group.spans.length; i++) {
+      const node: GlyphNode = { type: "span", span: group.spans[i], children: [] };
+      (open.length > 0 ? open[open.length - 1].children : root).push(node);
+      open.push(node);
+    }
+    (open.length > 0 ? open[open.length - 1].children : root).push({ type: "group", group });
+  }
+  return root;
+}
+
+/** リンク先として使ってよい URL かどうか。スクリプトを実行する javascript: などは使わない。 */
+export function isSafeHref(href: string): boolean {
+  // ブラウザは URL の前後の空白と途中のタブ・改行を無視するので、取り除いてから見る
+  const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
+  return !/^(?:javascript|vbscript|data):/.test(normalized);
 }
 
 /** グループに指定する font-feature-settings。指定しないなら null。 */
@@ -290,6 +343,8 @@ export interface SvgStringOptions {
    * 回転と移動で代用する（vert が効かない Safari などの WebKit 用）。既定 "auto"（ブラウザに合わせる）。
    */
   verticalForms?: VerticalFormsOption;
+  /** リンク・文字色・線を付ける範囲（元のテキストの位置で指定する）。 */
+  spans?: readonly StoneSpan[];
 }
 
 /** テキストノード用に & < > をエスケープする。 */
@@ -345,28 +400,65 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
     parts.push("</g>");
   }
 
-  for (const paragraph of glyphParagraphs(ctx, options.verticalForms)) {
-    parts.push('<text xml:space="preserve">');
-    for (const group of paragraph.groups) {
-      const gAttrs = [
-        `font-family="${escapeAttr(group.fontFamily)}"`,
-        `font-size="${num(group.fontSize)}"`,
-        `font-weight="${escapeAttr(String(group.fontWeight))}"`,
-        `font-style="${escapeAttr(group.fontStyle)}"`,
-      ];
-      const features = fontFeatureSettingsOf(group);
-      if (features) gAttrs.push(`style="font-feature-settings:${escapeAttr(features)}"`);
-      parts.push(`<tspan ${gAttrs.join(" ")}>`);
-      for (const el of group.glyphs) {
-        // rotate 属性はグリフをその原点（x, y）を中心に回す。1 文字ごとの <text> に transform="rotate(90 x y)" を付けたのと同じ見た目になる
-        const rotate = el.rotate ? ` rotate="${el.rotate}"` : "";
-        parts.push(
-          `<tspan x="${num(el.x)}" y="${num(el.y)}"${rotate} data-run="${el.runId}">${escapeText(el.text)}</tspan>`,
-        );
-      }
-      parts.push("</tspan>");
+  const spans = options.spans ?? [];
+  const writeGroup = (group: GlyphGroup): void => {
+    const gAttrs = [
+      `font-family="${escapeAttr(group.fontFamily)}"`,
+      `font-size="${num(group.fontSize)}"`,
+      `font-weight="${escapeAttr(String(group.fontWeight))}"`,
+      `font-style="${escapeAttr(group.fontStyle)}"`,
+    ];
+    const features = fontFeatureSettingsOf(group);
+    if (features) gAttrs.push(`style="font-feature-settings:${escapeAttr(features)}"`);
+    parts.push(`<tspan ${gAttrs.join(" ")}>`);
+    for (const el of group.glyphs) {
+      // rotate 属性はグリフをその原点（x, y）を中心に回す。1 文字ごとの <text> に transform="rotate(90 x y)" を付けたのと同じ見た目になる
+      const rotate = el.rotate ? ` rotate="${el.rotate}"` : "";
+      parts.push(
+        `<tspan x="${num(el.x)}" y="${num(el.y)}"${rotate} data-run="${el.runId}">${escapeText(el.text)}</tspan>`,
+      );
     }
+    parts.push("</tspan>");
+  };
+  const writeNodes = (nodes: GlyphNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "group") {
+        writeGroup(node.group);
+        continue;
+      }
+      const span = spans[node.span];
+      const link = span.href !== undefined && isSafeHref(span.href);
+      const sAttrs = [`data-span="${node.span}"`];
+      if (link) {
+        sAttrs.unshift(`href="${escapeAttr(span.href as string)}"`);
+        if (span.target) sAttrs.push(`target="${escapeAttr(span.target)}"`);
+        if (span.rel) sAttrs.push(`rel="${escapeAttr(span.rel)}"`);
+      }
+      if (span.className) sAttrs.push(`class="${escapeAttr(span.className)}"`);
+      if (span.color) sAttrs.push(`fill="${escapeAttr(span.color)}"`);
+      const tag = link ? "a" : "tspan";
+      parts.push(`<${tag} ${sAttrs.join(" ")}>`);
+      writeNodes(node.children);
+      parts.push(`</${tag}>`);
+    }
+  };
+
+  for (const paragraph of glyphParagraphs(ctx, { verticalForms: options.verticalForms, spans })) {
+    parts.push('<text xml:space="preserve">');
+    writeNodes(nestGlyphGroups(paragraph.groups));
     parts.push("</text>");
+  }
+
+  const decorations = decorationRects(ctx, spans);
+  if (decorations.length > 0) {
+    parts.push('<g class="stone-decorations">');
+    for (const d of decorations) {
+      const fill = d.color ? ` fill="${escapeAttr(d.color)}"` : "";
+      parts.push(
+        `<rect x="${num(d.x)}" y="${num(d.y)}" width="${num(d.width)}" height="${num(d.height)}"${fill} data-span="${d.spanIndex}"/>`,
+      );
+    }
+    parts.push("</g>");
   }
 
   parts.push("</svg>");

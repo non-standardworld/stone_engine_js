@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import type { Route } from "./+types/home";
 import { StoneText, type StoneContext } from "@non-standardworld/stone-engine.js/react";
 import type {
@@ -39,7 +40,26 @@ const LATIN_FONTS = [
   { label: "和文フォントと同じ", value: "" },
 ];
 
+/** children に要素を渡す例。リンク・文字色・下線・打ち消し線を SVG に反映する。 */
+function RichText({ direction }: { direction: Direction }) {
+  return (
+    <StoneText
+      direction={direction}
+      fontSize={18}
+      lineHeightScale={1.9}
+      height={direction === "tbRl" ? "container" : "auto"}
+      style={direction === "tbRl" ? { height: 300 } : undefined}
+    >
+      ソースコードは<a href="https://github.com/non-standardworld/stone_engine_js">GitHub</a>で公開しています。
+      <span style={{ color: "#c0392b" }}>文字色</span>や<u>下線</u>、<s>打ち消し線</s>も、CSS で決まった見た目のまま組まれます。
+      <br />
+      <Link to="?from=stone-link">React Router のリンク</Link>は、クリックするとページを読み直さずに移動します。
+    </StoneText>
+  );
+}
+
 export default function Home() {
+  const [searchParams] = useSearchParams();
   const [text, setText] = useState(SAMPLE);
   const [direction, setDirection] = useState<Direction>("lrTb");
   const [fontSize, setFontSize] = useState(20);
@@ -118,6 +138,18 @@ export default function Home() {
             Web フォント（Google Fonts など）もそのまま使えます。
           </p>
           <p>下のプレイグラウンドで設定を変えて試せます。文字をクリックすると、その文字のレイアウト情報を表示します。</p>
+        </div>
+      </section>
+
+      <section className="rich">
+        <h2>リンクと装飾</h2>
+        <p className="rich__note">
+          children に <code>&lt;a&gt;</code> や <code>&lt;Link&gt;</code>、<code>&lt;span style&gt;</code> を渡せます。
+          {searchParams.get("from") === "stone-link" && <strong>（Link で移動しました）</strong>}
+        </p>
+        <div className="rich__samples">
+          <RichText direction="lrTb" />
+          <RichText direction="tbRl" />
         </div>
       </section>
 

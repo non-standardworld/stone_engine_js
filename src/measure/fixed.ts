@@ -10,6 +10,8 @@ export interface FixedMeasurerOptions {
   fullWidth?: number;
   /** 半角英数の送り幅（em）。既定 0.55。 */
   halfWidth?: number;
+  /** 太字（font-weight が 600 以上か "bold" / "bolder"）の半角英数の送り幅（em）。既定 0.6。全角と空白は太字でも変えない。 */
+  boldHalfWidth?: number;
   /** 空白の送り幅（em）。既定 0.3。 */
   spaceWidth?: number;
   /** 欧文フォントのアセント／ディセント（em）。既定 0.9 / 0.25。 */
@@ -71,9 +73,18 @@ export function isFullWidthCodePoint(cp: number): boolean {
   return category !== null && FULL_WIDTH_CATEGORIES.has(category);
 }
 
+/** font-weight が太字（600 以上か "bold" / "bolder"）かどうか。 */
+function isBoldWeight(weight: number | string): boolean {
+  const s = String(weight).trim().toLowerCase();
+  if (s === "bold" || s === "bolder") return true;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 600;
+}
+
 export class FixedMeasurer implements FontMeasurer {
   private readonly fullWidth: number;
   private readonly halfWidth: number;
+  private readonly boldHalfWidth: number;
   private readonly spaceWidth: number;
   private readonly ascentRatio: number;
   private readonly descentRatio: number;
@@ -82,20 +93,21 @@ export class FixedMeasurer implements FontMeasurer {
   constructor(options: FixedMeasurerOptions = {}) {
     this.fullWidth = options.fullWidth ?? 1;
     this.halfWidth = options.halfWidth ?? 0.55;
+    this.boldHalfWidth = options.boldHalfWidth ?? 0.6;
     this.spaceWidth = options.spaceWidth ?? 0.3;
     this.ascentRatio = options.ascent ?? 0.9;
     this.descentRatio = options.descent ?? 0.25;
   }
 
-  /** 全角 / 半角 / 空白の固定幅を返す。 */
-  advance(_font: ResolvedFont, size: number, char: string): number {
+  /** 全角 / 半角 / 空白の固定幅を返す。太字の半角は boldHalfWidth。 */
+  advance(font: ResolvedFont, size: number, char: string): number {
     const cp = char.codePointAt(0);
     if (cp === undefined) return 0;
     if (char === "\n" || char === "\r" || char === "\r\n") return 0;
     if (cp === 0x20 || cp === 0x09) return size * this.spaceWidth;
     if (cp === 0x3000) return size * this.fullWidth;
     if (isFullWidthCodePoint(cp)) return size * this.fullWidth;
-    return size * this.halfWidth;
+    return size * (isBoldWeight(font.weight) ? this.boldHalfWidth : this.halfWidth);
   }
 
   /** 固定のアセント／ディセントを返す。 */

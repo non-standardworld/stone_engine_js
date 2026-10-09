@@ -26,8 +26,14 @@ export type RunVisibility = "visible" | "invisible" | "ellipsis";
 /** 文字種。フォントとスケールはこの単位で指定する。 */
 export type Script = "latin" | "japanese" | "emoji";
 
-/** フォント ID は SCRIPTS の添字と一致する。 */
+/**
+ * 通常のフォント ID は SCRIPTS の添字と一致する。太さ・スタイルを変えた変種（太字・斜体）のフォント ID は
+ * 「変種の番号 × SCRIPTS.length + 文字種の添字」なので、どの変種でも文字種は scriptOfFontId（fonts.ts）で分かる。
+ */
 export const SCRIPTS: readonly Script[] = ["latin", "japanese", "emoji"];
+
+/** フォントのスタイル（CSS の font-style）。 */
+export type FontStyle = "normal" | "italic" | "oblique";
 
 export interface Point {
   x: number;
@@ -79,7 +85,7 @@ export interface FontSpec {
   /** 文字種ごとの表示スケール。既定値は latin 0.95、その他 1.0。 */
   scale?: number;
   weight?: number | string;
-  style?: "normal" | "italic" | "oblique";
+  style?: FontStyle;
   /**
    * アセント（フォントサイズに対する比）。省略時は japanese が 0.88（和文の仮想ボディ）、
    * それ以外は measurer が計測したフォントメトリクスを使う。
@@ -95,7 +101,7 @@ export interface ResolvedFont {
   family: string;
   scale: number;
   weight: number | string;
-  style: "normal" | "italic" | "oblique";
+  style: FontStyle;
   ascent?: number;
   descent?: number;
 }
@@ -116,6 +122,22 @@ export interface FontMeasurer {
   advance(font: ResolvedFont, size: number, char: string): number;
   /** 指定フォント・サイズのアセント／ディセント（px）。 */
   metrics(font: ResolvedFont, size: number): FontMetrics;
+}
+
+/**
+ * フォントの太さ・スタイルを変えるテキストの範囲（<strong>、<em> など）。送り幅が変わるので、layoutText に渡して組む。
+ * 範囲の文字は文字種のフォントのまま、太さ・スタイルだけを変える（指定しなかったほうは文字種のフォントのまま）。
+ * 範囲が重なるときは内側の範囲（開始が遅いもの、同じなら短いもの）の指定が優先する。
+ */
+export interface FontStyleSpan {
+  /** 範囲の開始（元のテキストの UTF-16 の位置）。 */
+  start: number;
+  /** 範囲の終了（含まない）。 */
+  end: number;
+  /** フォントの太さ（CSS の font-weight。例: 700、"bold"）。 */
+  fontWeight?: number | string;
+  /** フォントのスタイル（CSS の font-style）。 */
+  fontStyle?: FontStyle;
 }
 
 /** レイアウト設定。Swift 版の STLabel / STContext のプロパティに対応する。 */

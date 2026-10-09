@@ -69,24 +69,25 @@ export function Article() {
 
 ### リンクと装飾
 
-`children` には `<a>` や React Router の `<Link>`、`<span style>`、`<u>`、`<s>` などの要素も渡せます。要素の中のテキストも組み、次のものを SVG に反映します。
+`children` には `<a>` や React Router の `<Link>`、`<span style>`、`<u>`、`<s>`、`<strong>`、`<em>` などの要素も渡せます。要素の中のテキストも組み、次のものを SVG に反映します。
 
 - リンク（`<a href>`）。SVG の `<a>` になり、クリックすると元の `<a>` をクリックしたことになるので、`<Link>` などのクライアント側の遷移もそのまま動きます。修飾キー付きのクリックや中クリック（新しいタブで開くなど）はブラウザに任せます
 - 文字色（CSS の `color` が親と違う要素）
 - 下線・打ち消し線（CSS の `text-decoration-line`。ブラウザ標準のリンクの下線も含む）。1 文字ずつの `<tspan>` ではブラウザの下線が文字ごとに切れるので、行ごとに矩形で描きます。横書きの下線は仮想ボディの下端、縦書きでは列の右（傍線）に引きます
+- 太さ・スタイル（CSS の `font-weight` / `font-style` が親と違う要素。`<strong>`、`<b>`、`<em>`、`<i>` も含む）。その文字は文字種のフォントの太さ・スタイルだけを変えたフォントで送り幅を測って組むので、太字の欧文も隣の文字と重なりません。ベースラインは通常の太さのフォントにそろえます
 
 ```tsx
 <StoneText direction="tbRl" height={360}>
   詳しくは<a href="/docs">ドキュメント</a>を、更新情報は<Link to="/news">お知らせ</Link>をご覧ください。
   <br />
-  <span style={{ color: "crimson" }}>赤い文字</span>と<u>下線</u>も組めます。
+  <span style={{ color: "crimson" }}>赤い文字</span>と<u>下線</u>、<strong>太字 Bold</strong>も組めます。
 </StoneText>
 ```
 
-`<br>` は改行になり、`<rt>`（ルビの読み）は組みません。太字や斜体など送り幅が変わる指定は、まだ反映しません（通常の太さで組みます）。
+`<br>` は改行になり、`<rt>`（ルビの読み）は組みません。斜体は縦書きでも横書きと同じ向きに傾きます（斜体の字形がない和文フォントはブラウザが傾けて描きます）。
 読み取りは、`children` をそのまま描画したスクリーンリーダー用の要素（レイアウト前はフォールバックの `<p>`）から行うので、CSS で決まった色や下線がそのまま使われます。キーボードのフォーカスは元の `<a>` が受け、SVG 側のリンクに枠を描きます。SVG のリンクは `.stone-text svg a` で、線は `.stone-text svg .stone-decorations rect` でスタイルを当てられます（例: `.stone-text svg a:hover { fill: crimson }`）。
 
-フレームワークを使わない場合は、`readStoneSource(element)` で HTML 要素からテキストと範囲（`spans`）を読み取り、`mountStoneText` / `svgString` の `spans` に渡します。
+フレームワークを使わない場合は、`readStoneSource(element)` で HTML 要素からテキストと範囲（`spans`）を読み取り、`mountStoneText` / `svgString` の `spans` に渡します。`layoutText()` / `useStoneLayout` を直接使うときは、太さ・スタイルを組みに反映するために同じ `spans` をレイアウトにも渡します（`layoutText(text, options, measurer, size, spans)`、`useStoneLayout({ text, spans, ... })`。`mountStoneText` と `<StoneText>` は自動で渡します）。
 
 ### SSR（React Router / Next.js など）
 

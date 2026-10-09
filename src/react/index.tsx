@@ -4,7 +4,8 @@ react/index.tsx — React 用コンポーネントとフック。
 <StoneText> はコンテナ div の中に、レイアウト結果を SVG として描画する。
 SSR 時とフォント読み込み前は通常のテキスト（フォールバック）を描画し、クライアントでレイアウトできた時点で SVG に置き換わる。
 children に要素（<a>、<strong>、<Link> など）を渡したときは、それを描画したスクリーンリーダー用の要素からテキストと
-リンク・文字色・線を読み取り（render/spans.ts の readStoneSource）、SVG に重ねる。SVG のリンクをクリックすると、
+リンク・文字色・線・太さ・スタイルを読み取り（render/spans.ts の readStoneSource）、SVG に重ねる。太さ・スタイルの範囲は
+レイアウトにも渡し、その文字を太字・斜体のフォントで測って組む。SVG のリンクをクリックすると、
 元の <a> をクリックしたことにする（ルーターのリンクもそのまま動く）。キーボードのフォーカスは元の <a> が受け、SVG に枠を描く。
 */
 
@@ -43,7 +44,7 @@ import {
 } from "../render/svg.js";
 import type { VerticalFormsOption } from "../render/vertical.js";
 import { resolveFonts } from "../fonts.js";
-import type { FontMeasurer, Size, StoneOptions } from "../types.js";
+import type { FontMeasurer, FontStyleSpan, Size, StoneOptions } from "../types.js";
 
 export type { SizeSpec } from "../controller.js";
 export type { StoneContext } from "../context.js";
@@ -75,6 +76,13 @@ function optionsKey(options: StoneOptions): string {
   return JSON.stringify(options);
 }
 
+/** 範囲のうちレイアウトに効くもの（太さ・スタイル）を比較用の文字列にする（文字色などが変わっただけでは組み直さないため）。 */
+function fontSpansKey(spans: readonly FontStyleSpan[] | undefined): string {
+  if (!spans) return "";
+  const styled = spans.filter((span) => span.fontWeight !== undefined || span.fontStyle !== undefined);
+  return JSON.stringify(styled.map((span) => [span.start, span.end, span.fontWeight ?? null, span.fontStyle ?? null]));
+}
+
 /** コンテナ要素の大きさ（clientWidth / clientHeight）を ResizeObserver で追跡する。 */
 function useContainerSize(ref: RefObject<HTMLElement | null>, enabled: boolean): Size | null {
   const [size, setSize] = useState<Size | null>(null);
@@ -98,6 +106,8 @@ function useContainerSize(ref: RefObject<HTMLElement | null>, enabled: boolean):
 export interface UseStoneLayoutArgs {
   /** 組むテキスト。null のあいだはレイアウトしない。 */
   text: string | null;
+  /** フォントの太さ・スタイルを変える範囲（<strong>、<em> など）。StoneSpan の配列をそのまま渡してもよい。 */
+  spans?: readonly FontStyleSpan[];
   options?: StoneOptions;
   /** 既定: 横書きは "container"（containerRef の幅）、縦書きは "auto"（内容に合わせて伸びる）。 */
   width?: SizeSpec;
@@ -113,9 +123,11 @@ export interface UseStoneLayoutArgs {
  * フォントの読み込み完了やコンテナのリサイズで自動的に更新される。
  */
 export function useStoneLayout(args: UseStoneLayoutArgs): StoneContext | null {
-  const { text, options = {}, width, height, containerRef, measurer } = args;
+  const { text, spans, options = {}, width, height, containerRef, measurer } = args;
   const key = optionsKey(options);
   const stableOptions = useMemo(() => options, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const spansKey = fontSpansKey(spans);
+  const stableSpans = useMemo(() => spans, [spansKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const defaultWidth = (stableOptions.direction ?? "lrTb") === "tbRl" ? "auto" : "container";
   const needsContainer = (width ?? defaultWidth) === "container" || height === "container";
   const fallbackRef = useRef<HTMLElement | null>(null);
@@ -141,8 +153,8 @@ export function useStoneLayout(args: UseStoneLayoutArgs): StoneContext | null {
     const direction = stableOptions.direction ?? "lrTb";
     const size = resolveLayoutSize(direction, width, height, containerSize);
     if (!size) return;
-    controller.update({ text, options: stableOptions, size });
-  }, [text, stableOptions, width, height, containerSize, measurer]);
+    controller.update({ text, options: stableOptions, size, spans: stableSpans });
+  }, [text, stableSpans, stableOptions, width, height, containerSize, measurer]);
 
   return layout;
 }
@@ -332,7 +344,7 @@ export interface StoneTextProps extends StoneOptions {
   text?: string;
   /**
    * 組むテキスト。<a>、<strong>、<Link> などの要素を含めてもよい。要素の中のテキストも組み、リンクと、CSS で決まった
-   * 文字色・下線・打ち消し線を SVG に反映する（太字や斜体など送り幅が変わるものは反映しない）。<br> は改行になる。
+   * 文字色・下線・打ち消し線・太さ・スタイルを SVG に反映する（太字・斜体はそのフォントで送り幅を測って組む）。<br> は改行になる。
    */
   children?: ReactNode;
   /** 既定: 横書きは "container"（コンポーネントの幅）、縦書きは "auto"（内容に合わせて左に伸びる）。 */
@@ -437,7 +449,7 @@ export function StoneText(props: StoneTextProps) {
   const spans = plain === null ? source?.spans : undefined;
   const sourceContent = plain ?? children;
 
-  const layout = useStoneLayout({ text: content, options, width, height, containerRef: ref, measurer });
+  const layout = useStoneLayout({ text: content, spans, options, width, height, containerRef: ref, measurer });
 
   // キーボードで元の <a> にフォーカスしたとき、SVG のリンクに枠を描く
   const [focusedSpan, setFocusedSpan] = useState<number | null>(null);

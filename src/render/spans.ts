@@ -1,27 +1,27 @@
 /*
-render/spans.ts — テキストの範囲に付けるリンク・文字色・線（下線・打ち消し線）。
+render/spans.ts — テキストの範囲に付けるリンク・文字色・線（下線・打ち消し線）・太さ・スタイル。
 
-組版はプレーンテキストに対して行い、範囲ごとの装飾は描画のときに重ねる。文字色と線は送り幅を変えないので、レイアウトはそのまま使える
-（太字や斜体は送り幅が変わるので対象外）。
+組版はプレーンテキストに対して行い、範囲ごとの装飾は描画のときに重ねる。文字色と線は送り幅を変えないので、レイアウトはそのまま使える。
+太さ・スタイル（太字・斜体）は送り幅が変わるので、範囲を layoutText にも渡して、その文字を太さ・スタイルを変えた変種のフォントで組む
+（engine.ts の applyFontStyleSpans）。描画は run のフォントのとおりなので、ここでは何もしない。
 - リンクは SVG の <a> にする（<text> の中で、その範囲の文字の <tspan> を囲む）。
 - 文字色は、その範囲を囲む要素の fill にする。
 - 線は SVG の <text-decoration> ではなく、文字の占める矩形から自前で描く。1 文字ずつ <tspan> に分けているので、ブラウザの下線は
   文字ごとに切れるうえ、縦書きでは横線になってしまう。横書きは仮想ボディの下端、縦書きは列の右（日本語の傍線の位置）に引く。
 
 React の <StoneText> は、children を描画したスクリーンリーダー用の要素から readStoneSource でテキストと範囲を読み取る。
-<a> の href や、CSS で決まった文字色・下線（ブラウザ標準のリンクの下線も含む）がそのまま反映される。
+<a> の href や、CSS で決まった文字色・下線（ブラウザ標準のリンクの下線も含む）・太さ・スタイルがそのまま反映される。
 */
 
 import type { StoneContext } from "../context.js";
 import { isSpaceChar } from "../punctuation.js";
-import { SCRIPTS, type Rect, type Run } from "../types.js";
+import { SCRIPTS, type FontStyle, type FontStyleSpan, type Rect, type Run } from "../types.js";
 
-/** テキストの範囲に付ける装飾。 */
-export interface StoneSpan {
-  /** 範囲の開始（元のテキストの UTF-16 の位置）。 */
-  start: number;
-  /** 範囲の終了（含まない）。 */
-  end: number;
+/**
+ * テキストの範囲に付ける装飾。start / end は元のテキストの UTF-16 の位置。
+ * fontWeight / fontStyle（太さ・スタイル）は、同じ範囲を layoutText にも渡したときに反映される。
+ */
+export interface StoneSpan extends FontStyleSpan {
   /** リンク先。指定すると SVG の <a> で囲む。 */
   href?: string;
   /** リンクの target。 */
@@ -173,13 +173,20 @@ export interface StoneSource {
   elements: Element[];
 }
 
+/** 計算済みの font-style（"oblique 10deg" など）を FontStyle にする。 */
+function fontStyleOf(value: string): FontStyle {
+  if (value === "italic") return "italic";
+  return value.startsWith("oblique") ? "oblique" : "normal";
+}
+
 /** テキストに含めない要素（ルビの読みなど）。 */
 const SKIPPED_TAGS: ReadonlySet<string> = new Set(["RT", "RP", "SCRIPT", "STYLE", "TEMPLATE"]);
 
 /**
  * DOM 要素から、組むテキストと範囲ごとの装飾を読み取る（ブラウザ専用）。
  * テキストはテキストノードを順につなげたもので、<br> は改行にする。要素ごとに、リンク（<a href>）と、
- * 親と違う文字色、下線・打ち消し線（CSS の text-decoration-line。ブラウザ標準のリンクの下線も含む）を範囲にする。
+ * 親と違う文字色、下線・打ち消し線（CSS の text-decoration-line。ブラウザ標準のリンクの下線も含む）、
+ * 親と違う太さ・スタイル（CSS の font-weight / font-style。<strong> や <em> も含む）を範囲にする。
  */
 export function readStoneSource(root: Element): StoneSource {
   const view = root.ownerDocument.defaultView;
@@ -218,6 +225,8 @@ export function readStoneSource(root: Element): StoneSource {
     }
     if (cs) {
       if (parentStyle && cs.color !== parentStyle.color) span.color = cs.color;
+      if (parentStyle && cs.fontWeight !== parentStyle.fontWeight) span.fontWeight = cs.fontWeight;
+      if (parentStyle && cs.fontStyle !== parentStyle.fontStyle) span.fontStyle = fontStyleOf(cs.fontStyle);
       const line = cs.textDecorationLine || "";
       if (/\bunderline\b/.test(line)) span.underline = true;
       if (/\bline-through\b/.test(line)) span.lineThrough = true;
@@ -231,7 +240,12 @@ export function readStoneSource(root: Element): StoneSource {
   const kept = entries.filter(
     ({ span }) =>
       span.end > span.start &&
-      (span.href !== undefined || span.color !== undefined || span.underline || span.lineThrough),
+      (span.href !== undefined ||
+        span.color !== undefined ||
+        span.underline ||
+        span.lineThrough ||
+        span.fontWeight !== undefined ||
+        span.fontStyle !== undefined),
   );
   return { text, spans: kept.map((e) => e.span), elements: kept.map((e) => e.element) };
 }
@@ -250,6 +264,8 @@ export function sameSpans(a: readonly StoneSpan[], b: readonly StoneSpan[]): boo
     "underline",
     "lineThrough",
     "decorationColor",
+    "fontWeight",
+    "fontStyle",
   ];
   return a.every((span, i) => keys.every((key) => span[key] === b[i][key]));
 }

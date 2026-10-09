@@ -5,7 +5,7 @@ Swift 版は String.enumerateSubstrings(.byWords / .byComposedCharacterSequences
 ここでは Intl.Segmenter（word / grapheme）を使う。word 分割は ICU の辞書ベースで、日本語も単語単位に分かれる。
 */
 
-import { fontIdForChar } from "./fonts.js";
+import { fontIdForChar, fontIdWithScript, scriptOfFontId } from "./fonts.js";
 import {
   isNewlineChar,
   isNumberChar,
@@ -14,7 +14,7 @@ import {
   isSpaceChar,
   punctuationOf,
 } from "./punctuation.js";
-import { SCRIPTS, type Run, type Token } from "./types.js";
+import type { Run, Token } from "./types.js";
 
 export interface ParseResult {
   runs: Run[];
@@ -117,9 +117,6 @@ function createRun(char: string, tokenId: number, tokenRunIndex: number, prevFon
   };
 }
 
-const LATIN_FONT_ID = SCRIPTS.indexOf("latin");
-const JAPANESE_FONT_ID = SCRIPTS.indexOf("japanese");
-
 /**
  * 引用符「“」「”」「‘」「’」のフォントを前後の文字で決める。始めの引用符は後ろ、終わりの引用符は前の文字（続く引用符は飛ばす）が
  * 欧文フォントの文字なら欧文（"“Hello”"、"it’s"、和文中の「“OK”」）、それ以外（和文・空白・改行・行頭／行末）なら和文にする。
@@ -127,7 +124,7 @@ const JAPANESE_FONT_ID = SCRIPTS.indexOf("japanese");
  */
 function resolveQuotationMarkFonts(runs: Run[]): void {
   const isLatinNeighbor = (run: Run | undefined): boolean =>
-    run !== undefined && !run.isNewline && !isSpaceChar(run.char) && run.fontId === LATIN_FONT_ID;
+    run !== undefined && !run.isNewline && !isSpaceChar(run.char) && scriptOfFontId(run.fontId) === "latin";
   for (let i = 0; i < runs.length; i++) {
     const run = runs[i];
     if (run.isNewline) {
@@ -138,7 +135,7 @@ function resolveQuotationMarkFonts(runs: Run[]): void {
     const step = isOpeningQuotationMark(run.char) ? 1 : -1;
     let j = i + step;
     while (j >= 0 && j < runs.length && isQuotationMark(runs[j].char)) j += step;
-    run.fontId = isLatinNeighbor(runs[j]) ? LATIN_FONT_ID : JAPANESE_FONT_ID;
+    run.fontId = fontIdWithScript(run.fontId, isLatinNeighbor(runs[j]) ? "latin" : "japanese");
   }
 }
 

@@ -21,8 +21,8 @@ export interface MountOptions extends StoneOptions {
   /** 縦書きの和文の縦組み用グリフの描き方。既定 "auto"（vert が効かない Safari などの WebKit では回転と移動で代用する）。 */
   verticalForms?: VerticalFormsOption;
   /**
-   * リンク・文字色・線を付ける範囲（text の位置で指定する）。HTML から作るときは readStoneSource(element) で
-   * テキストと一緒に読み取れる。
+   * リンク・文字色・線・太さ・スタイルを付ける範囲（text の位置で指定する）。HTML から作るときは readStoneSource(element) で
+   * テキストと一緒に読み取れる。太さ・スタイル（fontWeight / fontStyle）の範囲は、そのフォントで送り幅を測って組む。
    */
   spans?: readonly StoneSpan[];
   measurer?: FontMeasurer | null;
@@ -74,14 +74,14 @@ export function mountStoneText(container: HTMLElement, options: MountOptions): S
       color: _c,
       showFrames: _s,
       verticalForms: _v,
-      spans: _sp,
+      spans,
       measurer: _m,
       onLayout: _o,
       ...layoutOptions
     } = current;
     const size = resolveLayoutSize(layoutOptions.direction ?? "lrTb", width, height, containerSize);
     if (!size) return;
-    controller.update({ text, options: layoutOptions, size });
+    controller.update({ text, options: layoutOptions, size, spans });
   };
 
   let observer: ResizeObserver | null = null;

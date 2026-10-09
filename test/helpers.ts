@@ -1,14 +1,15 @@
-import { FixedMeasurer, layoutText, type StoneContext, type StoneOptions } from "../src/index.js";
+import { FixedMeasurer, layoutText, type FontStyleSpan, type StoneContext, type StoneOptions } from "../src/index.js";
 
 export const measurer = new FixedMeasurer();
 
-/** fontSize 10、全角 10px、半角 5.5px（latin scale 0.95 で 5.225px）の決定的なレイアウト。 */
+/** fontSize 10、全角 10px、半角 5.5px（latin scale 0.95 で 5.225px。太字は 6px で 5.7px）の決定的なレイアウト。 */
 export function lay(
   text: string,
   options: StoneOptions = {},
   size: { width?: number; height?: number } = {},
+  spans?: readonly FontStyleSpan[],
 ): StoneContext {
-  return layoutText(text, { fontSize: 10, dividesByWords: false, ...options }, measurer, size);
+  return layoutText(text, { fontSize: 10, dividesByWords: false, ...options }, measurer, size, spans);
 }
 
 export function chars(ctx: StoneContext, line: number): string {

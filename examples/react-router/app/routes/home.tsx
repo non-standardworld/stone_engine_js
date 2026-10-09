@@ -40,7 +40,7 @@ const LATIN_FONTS = [
   { label: "和文フォントと同じ", value: "" },
 ];
 
-/** children に要素を渡す例。リンク・文字色・下線・打ち消し線を SVG に反映する。 */
+/** children に要素を渡す例。リンク・文字色・下線・打ち消し線・太字・斜体を SVG に反映する。 */
 function RichText({ direction }: { direction: Direction }) {
   return (
     <StoneText
@@ -51,7 +51,8 @@ function RichText({ direction }: { direction: Direction }) {
       style={direction === "tbRl" ? { height: 300 } : undefined}
     >
       ソースコードは<a href="https://github.com/non-standardworld/stone_engine_js">GitHub</a>で公開しています。
-      <span style={{ color: "#c0392b" }}>文字色</span>や<u>下線</u>、<s>打ち消し線</s>も、CSS で決まった見た目のまま組まれます。
+      <span style={{ color: "#c0392b" }}>文字色</span>や<u>下線</u>、<s>打ち消し線</s>、<strong>太字 Bold</strong>、
+      <em>斜体 Italic</em>も、CSS で決まった見た目のまま組まれます。
       <br />
       <Link to="?from=stone-link">React Router のリンク</Link>は、クリックするとページを読み直さずに移動します。
     </StoneText>

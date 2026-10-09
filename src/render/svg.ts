@@ -6,6 +6,7 @@ Swift 版は CoreText でグリフを直接描いていたが、Web ではブラ
 縦書きの和文の引用符「“」「”」「‘」「’」は、fwid で全角の字形にしてから vert で縦組み用グリフ（〝〟の形）にする。
 vert が効かない Safari などの WebKit では、縦組み用グリフを横組みのグリフの回転と移動で描く（render/vertical.ts）。
 リンク・文字色の範囲（render/spans.ts）は、その範囲の文字の <tspan> を <a> / <tspan> で囲み、線は <text> の後ろに矩形で描く。
+太字・斜体の文字は run のフォント ID が変種（fonts.ts）になっているので、フォント設定ごとのグループ分けでその太さ・スタイルの <tspan> になる。
 
 <text> は改行で区切った段落ごとに 1 つにまとめる。Chrome / Safari は SVG の <text> をブロックとして扱い、
 選択範囲をコピーするときに <text> の境目ごとに改行を入れるため、1 文字ごとに <text> を分けると
@@ -15,12 +16,10 @@ vert が効かない Safari などの WebKit では、縦組み用グリフを�
 
 import type { StoneContext } from "../context.js";
 import { HORIZONTAL_ELLIPSIS, isSpaceChar, VERTICAL_ELLIPSIS } from "../punctuation.js";
-import { SCRIPTS, type Run, type Size } from "../types.js";
+import { fontIdWithScript } from "../fonts.js";
+import type { Run, Size } from "../types.js";
 import { columnLeft, decorationRects, spanStacks, type StoneSpan } from "./spans.js";
 import { resolveVerticalForms, verticalGlyphTransform, type VerticalForms, type VerticalFormsOption } from "./vertical.js";
-
-/** 和文フォントの ID（フォント ID は SCRIPTS の添字と一致する）。縦書きの省略記号はこのフォントで描く。 */
-const JAPANESE_FONT_ID = SCRIPTS.indexOf("japanese");
 
 /** 縦組み用グリフを有効にする CSS 値。 */
 export const VERTICAL_FEATURE_SETTINGS = '"vert" 1, "vrt2" 1';
@@ -157,7 +156,7 @@ function emulateVerticalGlyph(ctx: StoneContext, run: Run, placement: GlyphPlace
 
 /**
  * 省略記号になった run の描画要素。省略記号は run の矩形の先頭から描く（約物の詰めでずらしたグリフの位置は使わない）。
- * 横書きは run と同じフォントの「…」。縦書きは run の文字種にかかわらず、和文フォントの正立の「︙」を列の 1em 四方に描く
+ * 横書きは run と同じフォントの「…」。縦書きは run の文字種にかかわらず、和文フォント（run と同じ太さ・スタイルの変種）の正立の「︙」を列の 1em 四方に描く
  * （回転する欧文の run と一緒に回すと点が横に並び、縦中横の位置に描くと列の中央からずれる）。
  * レイアウトは、この大きさの省略記号が領域に収まる run を選んでいる（Layouter の updateVisibility）。
  */
@@ -174,10 +173,11 @@ function toEllipsisElement(ctx: StoneContext, runId: number): GlyphElement {
     });
   }
   const size = ctx.adjustFontSize;
+  const fontId = fontIdWithScript(run.fontId, "japanese");
   return glyphElement(ctx, runId, VERTICAL_ELLIPSIS, {
     x: columnLeft(ctx, run),
-    y: run.frame.y + size - ctx.fontManager.descent(JAPANESE_FONT_ID, size),
-    fontId: JAPANESE_FONT_ID,
+    y: run.frame.y + size - ctx.fontManager.descent(fontId, size),
+    fontId,
     rotate: 0,
     vertical: true,
     fullWidth: false,

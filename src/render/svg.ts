@@ -451,7 +451,7 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
 
   const decorations = decorationRects(ctx, spans);
   if (decorations.length > 0) {
-    parts.push('<g class="stone-decorations">');
+    parts.push('<g class="stone-decorations" pointer-events="none">');
     for (const d of decorations) {
       const fill = d.color ? ` fill="${escapeAttr(d.color)}"` : "";
       parts.push(

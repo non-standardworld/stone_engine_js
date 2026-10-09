@@ -85,7 +85,7 @@ export function Article() {
 ```
 
 `<br>` は改行になり、`<rt>`（ルビの読み）は組みません。斜体は縦書きでも横書きと同じ向きに傾きます（斜体の字形がない和文フォントはブラウザが傾けて描きます）。
-読み取りは、`children` をそのまま描画したスクリーンリーダー用の要素（レイアウト前はフォールバックの `<p>`）から行うので、CSS で決まった色や下線がそのまま使われます。キーボードのフォーカスは元の `<a>` が受け、SVG 側のリンクに枠を描きます。SVG のリンクは `.stone-text svg a` で、線は `.stone-text svg .stone-decorations rect` でスタイルを当てられます（例: `.stone-text svg a:hover { fill: crimson }`）。
+読み取りは、`children` をそのまま描画したスクリーンリーダー用の要素（レイアウト前はフォールバックの `<p>`）から行うので、CSS で決まった色や下線、太さ・スタイルがそのまま使われます。読み直すのはその要素の中の DOM が変わったとき（`children` の更新や、中の要素のクラス・スタイルの変更）だけで、スタイルシートや祖先のクラスなど外側の CSS だけが変わったときは反映されません（`key` を変えて作り直してください）。キーボードのフォーカスは元の `<a>` が受け、SVG 側のリンクに枠を描きます。SVG のリンクは `.stone-text svg a` で、線は `.stone-text svg .stone-decorations rect` でスタイルを当てられます（例: `.stone-text svg a:hover { fill: crimson }`）。
 
 フレームワークを使わない場合は、`readStoneSource(element)` で HTML 要素からテキストと範囲（`spans`）を読み取り、`mountStoneText` / `svgString` の `spans` に渡します。`layoutText()` / `useStoneLayout` を直接使うときは、太さ・スタイルを組みに反映するために同じ `spans` をレイアウトにも渡します（`layoutText(text, options, measurer, size, spans)`、`useStoneLayout({ text, spans, ... })`。`mountStoneText` と `<StoneText>` は自動で渡します）。
 

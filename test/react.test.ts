@@ -1,6 +1,6 @@
 import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { svgString, type StoneContext, type StoneSpan } from "../src/index.js";
 import { StoneSVG, StoneText } from "../src/react/index.js";
 import { lay } from "./helpers.js";
@@ -81,6 +81,26 @@ describe("StoneSVG", () => {
     ];
     expectSameSvg(lay("普通太字 Bold です", {}, { width: 60 }, spans), false, spans);
     expectSameSvg(lay("普通太字 Bold です", { direction: "tbRl" }, { height: 60 }, spans), false, spans);
+  });
+});
+
+describe("StoneSVG verticalForms", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the vert features on the server even for Safari, so that hydration matches", () => {
+    // "auto" はサーバーと hydration の初回描画では "feature"。svgString（hydration しない）はそのままブラウザに合わせる
+    vi.stubGlobal("navigator", {
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    });
+    const ctx = lay("「あ、い」", { direction: "tbRl" });
+    expect(renderToStaticMarkup(createElement(StoneSVG, { layout: ctx }))).toContain("vert");
+    expect(svgString(ctx)).not.toContain("vert");
+    expect(renderToStaticMarkup(createElement(StoneSVG, { layout: ctx, verticalForms: "emulated" }))).not.toContain(
+      "vert",
+    );
   });
 });
 

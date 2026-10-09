@@ -93,7 +93,9 @@ describe("decorationRects", () => {
   it("draws the lines and the focus rects in SVG", () => {
     const ctx = lay("あいうえ");
     const spans: StoneSpan[] = [{ start: 1, end: 3, href: "/x", underline: true }];
-    expect(svgString(ctx, { spans })).toMatch(/<g class="stone-decorations"><rect [^>]*data-span="0"\/><\/g><\/svg>$/);
+    expect(svgString(ctx, { spans })).toMatch(
+      /<g class="stone-decorations" pointer-events="none"><rect [^>]*data-span="0"\/><\/g><\/svg>$/,
+    ); // 線はリンクの文字へのクリックを遮らない
     expect(spanRects(ctx, spans, 0)).toEqual([{ x: 10, y: 0, width: 20, height: 10 }]);
   });
 });

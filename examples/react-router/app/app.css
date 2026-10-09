@@ -54,6 +54,36 @@ body {
   color: #444;
 }
 
+.rich {
+  margin-bottom: 48px;
+}
+
+.rich h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.rich__note {
+  margin: 0 0 16px;
+  color: var(--muted, #666);
+  font-size: 14px;
+}
+
+.rich__samples {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 32px;
+  align-items: start;
+}
+
+.rich a {
+  color: #1a5fb4;
+}
+
+.stone-text svg a:hover {
+  fill: var(--accent);
+}
+
 .playground {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
@@ -161,7 +191,8 @@ body {
   .hero {
     flex-direction: column;
   }
-  .playground {
+  .playground,
+  .rich__samples {
     grid-template-columns: 1fr;
   }
 }

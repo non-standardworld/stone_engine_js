@@ -6,6 +6,8 @@ import { resolveLayoutSize, StoneTextController, type SizeSpec } from "./control
 import type { StoneContext } from "./context.js";
 import { handleStoneCopy } from "./render/copy.js";
 import { svgString } from "./render/svg.js";
+import type { StoneSpan } from "./render/spans.js";
+import type { VerticalFormsOption } from "./render/vertical.js";
 import type { FontMeasurer, Size, StoneOptions } from "./types.js";
 
 export interface MountOptions extends StoneOptions {
@@ -16,6 +18,13 @@ export interface MountOptions extends StoneOptions {
   height?: SizeSpec;
   color?: string;
   showFrames?: boolean;
+  /** 縦書きの和文の縦組み用グリフの描き方。既定 "auto"（vert が効かない Safari などの WebKit では回転と移動で代用する）。 */
+  verticalForms?: VerticalFormsOption;
+  /**
+   * リンク・文字色・線を付ける範囲（text の位置で指定する）。HTML から作るときは readStoneSource(element) で
+   * テキストと一緒に読み取れる。
+   */
+  spans?: readonly StoneSpan[];
   measurer?: FontMeasurer | null;
   onLayout?: (ctx: StoneContext) => void;
 }
@@ -47,13 +56,29 @@ export function mountStoneText(container: HTMLElement, options: MountOptions): S
     measurer: current.measurer,
     onLayout: (ctx) => {
       latest = ctx;
-      container.innerHTML = svgString(ctx, { color: current.color, showFrames: current.showFrames });
+      container.innerHTML = svgString(ctx, {
+        color: current.color,
+        showFrames: current.showFrames,
+        verticalForms: current.verticalForms,
+        spans: current.spans,
+      });
       current.onLayout?.(ctx);
     },
   });
 
   const run = (): void => {
-    const { text, width, height, color: _c, showFrames: _s, measurer: _m, onLayout: _o, ...layoutOptions } = current;
+    const {
+      text,
+      width,
+      height,
+      color: _c,
+      showFrames: _s,
+      verticalForms: _v,
+      spans: _sp,
+      measurer: _m,
+      onLayout: _o,
+      ...layoutOptions
+    } = current;
     const size = resolveLayoutSize(layoutOptions.direction ?? "lrTb", width, height, containerSize);
     if (!size) return;
     controller.update({ text, options: layoutOptions, size });

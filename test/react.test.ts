@@ -1,8 +1,8 @@
-import { createElement } from "react";
+import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { svgString, type StoneContext } from "../src/index.js";
-import { StoneSVG } from "../src/react/index.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { svgString, type StoneContext, type StoneSpan } from "../src/index.js";
+import { StoneSVG, StoneText } from "../src/react/index.js";
 import { lay } from "./helpers.js";
 
 const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'" };
@@ -31,9 +31,9 @@ function contents(markup: string): string[] {
 }
 
 /** 2 つの描画方法で同じ SVG になることを確かめる。 */
-function expectSameSvg(ctx: StoneContext, showFrames = false): void {
-  const fromString = svgString(ctx, { showFrames });
-  const fromReact = renderToStaticMarkup(createElement(StoneSVG, { layout: ctx, showFrames }));
+function expectSameSvg(ctx: StoneContext, showFrames = false, spans?: StoneSpan[]): void {
+  const fromString = svgString(ctx, { showFrames, spans });
+  const fromReact = renderToStaticMarkup(createElement(StoneSVG, { layout: ctx, showFrames, spans }));
   for (const attr of ["width", "height", "viewBox"]) {
     expect(fromReact.match(new RegExp(` ${attr}="([^"]*)"`))?.[1]).toBe(fromString.match(new RegExp(` ${attr}="([^"]*)"`))?.[1]);
   }
@@ -62,5 +62,50 @@ describe("StoneSVG", () => {
 
   it("renders the full-width vertical glyphs of quotation marks the same way", () => {
     expectSameSvg(lay("彼は“はい”と“OK”と言った", { direction: "tbRl" }, { height: 60 }));
+  });
+
+  it("renders links, colored spans and lines the same way", () => {
+    const spans: StoneSpan[] = [
+      { start: 2, end: 9, href: "/docs?a=1&b=2", target: "_blank", rel: "noopener", underline: true },
+      { start: 4, end: 6, color: "#c00", className: "hot", lineThrough: true, decorationColor: "blue" },
+      { start: 12, end: 14, href: "javascript:alert(1)" },
+    ];
+    expectSameSvg(lay("詳細はリンク先\nを見て、ここも", {}, { width: 60 }), false, spans);
+    expectSameSvg(lay("詳細はリンク先\nを見て、ここも", { direction: "tbRl" }, { height: 60 }), false, spans);
+  });
+});
+
+describe("StoneSVG verticalForms", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the vert features on the server even for Safari, so that hydration matches", () => {
+    // "auto" はサーバーと hydration の初回描画では "feature"。svgString（hydration しない）はそのままブラウザに合わせる
+    vi.stubGlobal("navigator", {
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    });
+    const ctx = lay("「あ、い」", { direction: "tbRl" });
+    expect(renderToStaticMarkup(createElement(StoneSVG, { layout: ctx }))).toContain("vert");
+    expect(svgString(ctx)).not.toContain("vert");
+    expect(renderToStaticMarkup(createElement(StoneSVG, { layout: ctx, verticalForms: "emulated" }))).not.toContain(
+      "vert",
+    );
+  });
+});
+
+describe("StoneText", () => {
+  it("renders element children as they are until the layout is ready", () => {
+    const html = renderToStaticMarkup(
+      createElement(StoneText, null, "詳しくは", createElement("a", { href: "/docs" }, "こちら"), "へ"),
+    );
+    expect(html).toContain('<p class="stone-text__fallback"');
+    expect(html).toContain('詳しくは<a href="/docs">こちら</a>へ</p>');
+  });
+
+  it("still takes plain strings, numbers and fragments as the text", () => {
+    const html = renderToStaticMarkup(createElement(StoneText, null, "全", 3, createElement(Fragment, null, "件")));
+    expect(html).toContain(">全3件</p>");
   });
 });

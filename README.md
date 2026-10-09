@@ -14,7 +14,7 @@ Swift 版は CoreText でグリフを取り出し、`STLayout` が 1 文字ず�
 - 解析（`STParser`）は `Intl.Segmenter` で単語／書記素に分割
 - 計測（CoreText の送り幅・アセント／ディセント）は Canvas 2D の `measureText` で取得
 - レイアウト（`STLayout` / `STContext`）は TypeScript にそのまま移植
-- 描画は SVG。改行で区切った段落ごとに `<text>` を 1 つ置き、その中に 1 文字ずつ位置を指定した `<tspan>` を並べる。縦書きの欧文は `rotate="90"`、和文は `font-feature-settings: "vert"` で縦組み用グリフに置換
+- 描画は SVG。改行で区切った段落ごとに `<text>` を 1 つ置き、その中に 1 文字ずつ位置を指定した `<tspan>` を並べる。縦書きの欧文は `rotate="90"`、和文は `font-feature-settings: "vert"` で縦組み用グリフに置換。`vert` が効かない Safari などの WebKit では、縦組み用グリフを横組みのグリフの回転と移動で描く
 
 という構成です。フォントファイルを読み込む必要はなく、CSS で使える Web フォント（Google Fonts など）やシステムフォントがそのまま使えます。レイアウト結果は 1 文字ごとの位置・矩形・行番号として取り出せるので、Swift 版と同じく「内部構造を直接触れる」エンジンになっています。
 
@@ -67,6 +67,27 @@ export function Article() {
 </StoneText>
 ```
 
+### リンクと装飾
+
+`children` には `<a>` や React Router の `<Link>`、`<span style>`、`<u>`、`<s>` などの要素も渡せます。要素の中のテキストも組み、次のものを SVG に反映します。
+
+- リンク（`<a href>`）。SVG の `<a>` になり、クリックすると元の `<a>` をクリックしたことになるので、`<Link>` などのクライアント側の遷移もそのまま動きます。修飾キー付きのクリックや中クリック（新しいタブで開くなど）はブラウザに任せます
+- 文字色（CSS の `color` が親と違う要素）
+- 下線・打ち消し線（CSS の `text-decoration-line`。ブラウザ標準のリンクの下線も含む）。1 文字ずつの `<tspan>` ではブラウザの下線が文字ごとに切れるので、行ごとに矩形で描きます。横書きの下線は仮想ボディの下端、縦書きでは列の右（傍線）に引きます
+
+```tsx
+<StoneText direction="tbRl" height={360}>
+  詳しくは<a href="/docs">ドキュメント</a>を、更新情報は<Link to="/news">お知らせ</Link>をご覧ください。
+  <br />
+  <span style={{ color: "crimson" }}>赤い文字</span>と<u>下線</u>も組めます。
+</StoneText>
+```
+
+`<br>` は改行になり、`<rt>`（ルビの読み）は組みません。太字や斜体など送り幅が変わる指定は、まだ反映しません（通常の太さで組みます）。
+読み取りは、`children` をそのまま描画したスクリーンリーダー用の要素（レイアウト前はフォールバックの `<p>`）から行うので、CSS で決まった色や下線がそのまま使われます。読み直すのはその要素の中の DOM が変わったとき（`children` の更新や、中の要素のクラス・スタイルの変更）だけで、スタイルシートや祖先のクラスなど外側の CSS だけが変わったときは反映されません（`key` を変えて作り直してください）。キーボードのフォーカスは元の `<a>` が受け、SVG 側のリンクに枠を描きます。SVG のリンクは `.stone-text svg a` で、線は `.stone-text svg .stone-decorations rect` でスタイルを当てられます（例: `.stone-text svg a:hover { fill: crimson }`）。
+
+フレームワークを使わない場合は、`readStoneSource(element)` で HTML 要素からテキストと範囲（`spans`）を読み取り、`mountStoneText` / `svgString` の `spans` に渡します。
+
 ### SSR（React Router / Next.js など）
 
 コンポーネントはサーバーでは通常のテキスト（`<p>`、縦書きなら `writing-mode: vertical-rl`）を描画し、クライアントでフォントの計測ができた時点で組版結果の SVG に置き換わります。ハイドレーションの不一致は起きません。フォントが未読み込みなら `document.fonts.load()` で読み込み、完了後に自動的にレイアウトし直します。
@@ -89,7 +110,7 @@ SVG の中の 1 文字は `data-run`（run ID）を持つ `<tspan>` です。文
 
 | プロパティ | 既定値 | 説明 |
 | --- | --- | --- |
-| `text` / `children` | | 組むテキスト |
+| `text` / `children` | | 組むテキスト。`children` には `<a>` などの要素も渡せる（リンクと装飾を参照） |
 | `direction` | `"lrTb"` | `"lrTb"` 横書き、`"tbRl"` 縦書き |
 | `fontSize` | `17` | フォントサイズ（px） |
 | `lineHeightScale` | `1` | 行送り（フォントサイズに対する倍率） |
@@ -160,7 +181,7 @@ element.addEventListener("copy", (event) => handleStoneCopy(event, layout, eleme
 
 - 編集機能（`STTextView`、カーソル、選択、ルーペ）は移植していません。表示（`STLabel`）に相当する機能のみです。
 - フォントは名前の配列ではなく CSS の `font-family` リストで指定します。グリフ単位のフォールバックはブラウザが行います。
-- 縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの `font-feature-settings` に任せています。
+- 縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの `font-feature-settings` に任せています。ただし Safari と iOS / iPadOS のブラウザ（Apple の WebKit）は横組みの文字列に `vert` を適用しないので、縦組み用グリフが横組みのグリフの回転か平行移動になっている文字（括弧類・「ー」「〜」・ダーシ・リーダー・「、。，．」・小書きの仮名など）を、その変形で描きます。変形の値はヒラギノ角ゴシックの縦組み用グリフを計測したもので、元の文字は置き換えません（コピーやページ内検索はそのままです）。和文中の引用符「“」「”」は〝〟の形にはならず、CSS の縦書きと同じく横倒しになります。描き方は `StoneSVG` / `svgString` / `mountStoneText` の `verticalForms`（`"auto"` 既定、`"feature"`、`"emulated"`）で固定できます。
 - `Intl.Segmenter` が無い環境では単語分割が書記素分割にフォールバックします（`dividesByWords: false` 相当）。
 - 元実装の明らかな不具合をいくつか修正しています（禁則の追い出し単位、行頭約物の二重詰め、均等配置の余り、縦書き均等配置での 1 桁縦中横、`directionAlign: middle` のずれ）。詳細は `src/layout.ts` 冒頭のコメントを参照してください。
 - 均等配置（`textAlign: "justify"`）の余白は、トークン（単語）間ではなく文字間に配ります。元実装のようにトークン間にだけ配ると、`dividesByWords` が有効なときに文節ごとに大きな空きができて日本語の本文としては不自然になるためです。欧文の単語の途中（空白を挟まない欧文どうし）、縦中横の途中、「……」「——」の間は空けず、行末の空白は幅 0 にして除きます。

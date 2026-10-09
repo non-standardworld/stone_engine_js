@@ -17,6 +17,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ClipboardEvent,
   type CSSProperties,
   type FocusEvent,
@@ -41,7 +42,7 @@ import {
   type GlyphGroup,
   type GlyphNode,
 } from "../render/svg.js";
-import type { VerticalFormsOption } from "../render/vertical.js";
+import { detectVerticalForms, type VerticalForms, type VerticalFormsOption } from "../render/vertical.js";
 import { resolveFonts } from "../fonts.js";
 import type { FontMeasurer, Size, StoneOptions } from "../types.js";
 
@@ -226,6 +227,18 @@ function renderGlyphGroup(group: GlyphGroup, key: number): ReactNode {
   );
 }
 
+const subscribeNothing = (): (() => void) => () => {};
+const serverVerticalForms = (): VerticalForms => "feature";
+
+/**
+ * verticalForms を解決する。"auto" はサーバーと hydration の初回描画では "feature"、その後はブラウザに合わせる
+ * （サーバーで描いた SVG と Safari での hydration の SVG が食い違わないように）。
+ */
+function useVerticalForms(option: VerticalFormsOption = "auto"): VerticalForms {
+  const detected = useSyncExternalStore(subscribeNothing, detectVerticalForms, serverVerticalForms);
+  return option === "auto" ? detected : option;
+}
+
 /** フォーカスの枠と仮想ボディの間の余白（px）。 */
 const FOCUS_RING_GAP = 2;
 
@@ -248,7 +261,8 @@ export function StoneSVG({
   ...rest
 }: StoneSVGProps) {
   const size = svgSize(layout);
-  const paragraphs = glyphParagraphs(layout, { verticalForms, spans });
+  const forms = useVerticalForms(verticalForms);
+  const paragraphs = glyphParagraphs(layout, { verticalForms: forms, spans });
   const decorations = decorationRects(layout, spans);
   const focusRects = spans && focusedSpan !== null && spans[focusedSpan] ? spanRects(layout, spans, focusedSpan) : [];
   const handleCopy = (e: ClipboardEvent<SVGSVGElement>) => {
@@ -295,7 +309,7 @@ export function StoneSVG({
         </text>
       ))}
       {decorations.length > 0 && (
-        <g className="stone-decorations">
+        <g className="stone-decorations" pointerEvents="none">
           {decorations.map((d, i) => (
             <rect
               key={i}
@@ -416,23 +430,29 @@ export function StoneText(props: StoneTextProps) {
   const plain = text ?? plainTextOf(children);
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // children に要素があれば、描画したスクリーンリーダー用の要素（レイアウト前はフォールバック）から読み取る
-  const sourceRef = useRef<HTMLElement | null>(null);
-  const setSourceElement = (el: HTMLElement | null) => {
-    sourceRef.current = el;
-  };
+  // children に要素があれば、描画したスクリーンリーダー用の要素（レイアウト前はフォールバック）から読み取る。
+  // 読み直すのは、その要素が入れ替わったときと、中の DOM が変わったとき（React による children の更新もここに来る）だけ。
+  // 要素の外から CSS だけで変わる色や下線（スタイルシートや祖先のクラスの変更など）は、次に読み直すまで反映しない
+  const [sourceElement, setSourceElement] = useState<HTMLElement | null>(null);
   const sourceElements = useRef<Element[]>([]);
   const [source, setSource] = useState<{ text: string; spans: StoneSpan[] } | null>(null);
+  const readsSource = plain === null;
   useIsomorphicLayoutEffect(() => {
-    const el = sourceRef.current;
-    if (plain !== null || !el) {
+    if (!readsSource || !sourceElement) {
       sourceElements.current = [];
       return;
     }
-    const next = readStoneSource(el);
-    sourceElements.current = next.elements;
-    setSource((prev) => (prev && prev.text === next.text && sameSpans(prev.spans, next.spans) ? prev : next));
-  });
+    const read = (): void => {
+      const next = readStoneSource(sourceElement);
+      sourceElements.current = next.elements;
+      setSource((prev) => (prev && prev.text === next.text && sameSpans(prev.spans, next.spans) ? prev : next));
+    };
+    read();
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(read);
+    observer.observe(sourceElement, { childList: true, subtree: true, characterData: true, attributes: true });
+    return () => observer.disconnect();
+  }, [readsSource, sourceElement]);
   const content = plain ?? source?.text ?? null;
   const spans = plain === null ? source?.spans : undefined;
   const sourceContent = plain ?? children;

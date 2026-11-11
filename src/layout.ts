@@ -55,6 +55,13 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
   列末に来ると、残りが 1em に足りなくても同じ列に置かれて領域からはみ出し、その列から後ろが切り詰められた。2 桁の縦中横は逆に
   1em より長く見積もられ、残りがちょうど 1em の列に入らなかった。トークンの途中では次の文字をいつも 1em と見積もるため、
   列に収まる欧文の単語が、残りが 1em を切ったところで途中から次の列へ折り返された。）
+- 禁則の追い出しは、縦書きの列の先頭にある縦中横の途中までは戻さない（minLineEndRunId）。追い出しで戻れるのは行の最初の文字までだが、
+  列が縦中横で始まるときは、そのまとまりの最後の数字までにする。そこまで戻っても禁則を満たせないとき（縦中横の後ろに行頭禁則の
+  文字が続いて 1 列に収まらないとき）は、縦中横だけを列に残して改行する（1 桁の縦中横や和文の文字で始まる列と同じ分かれ方）。
+  欧文の単語や 3 桁以上の数字のように途中で折り返せるトークンと、横書きは、今までどおり行の最初の文字まで戻す。
+  （元実装は、追い出しを行の最初の run で止めるため、2 桁の縦中横で始まる列で追い出しが先頭まで戻ると、1 桁目の後ろで改行して
+  2 桁目が次の列に分かれた（「12々）」を 2 文字しか入らない高さに組むと「1」「2」「々）」）。2 桁目だけの列は、行末寄せで
+  列の長さが 0 と見積もられて領域の外に置かれ、その列から後ろが切り詰められた。）
 
 Swift 版にない追加（これも意図的な差異。オプションを指定しない限り、挙動は変わらない）:
 - 字間（letterSpacing、px）。CSS の letter-spacing と同じく各文字の後ろに足し、run の矩形（frame）の行方向の長さに含める。
@@ -477,20 +484,40 @@ export class Layouter {
   // Kinsoku
   //--------------------------------------------------------------//
 
-  /** 行末禁則・行頭禁則・分離禁止。行末をトークン単位で手前に戻す。 */
+  /**
+   * 禁則の追い出しで行末を戻せる、いちばん手前の run ID。行には、少なくとも最初の文字を残す。
+   * 縦書きの列が縦中横で始まるときは、その最後の数字まで。縦中横は横に並べた 1 つのまとまりなので、途中では改行しない
+   * （1 桁目だけを列に残すと、2 桁目が次の列に分かれる）。欧文の単語などは途中で折り返せるので、最初の文字まで戻す。
+   */
+  private minLineEndRunId(): number {
+    const ctx = this.ctx;
+    const start = this.lineStartRunId;
+    const first = ctx.runs[start];
+    if (!first || !ctx.isTateChuYoko(first)) return start;
+    // 最後の数字まで縦中横のトークンだけを、まとまりとして扱う（半角と全角の数字が混ざったトークンは、今までどおり最初の文字まで戻す）
+    const last = ctx.tokens[first.tokenId].end - 1;
+    return ctx.isTateChuYoko(ctx.runs[last]) ? last : start;
+  }
+
+  /**
+   * 行末禁則・行頭禁則・分離禁止。行末をトークン単位で手前に戻す。
+   * 行の最初の文字（縦中横で始まる列は、そのまとまり）まで戻っても禁則を満たせないときは、それだけを行に残して改行する。
+   */
   private processNotEndingAndStarting(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
     if (!ctx.kinsoku) return;
     if (runs[this.runId]?.isNewline) return;
 
+    const minRunId = this.minLineEndRunId();
+
     const decreaseRunId = (): void => {
       const token = ctx.tokens[runs[this.runId].tokenId];
       this.runId = token.start - 1;
-      if (this.runId < this.lineStartRunId) this.runId = this.lineStartRunId;
+      if (this.runId < minRunId) this.runId = minRunId;
     };
 
-    while (this.runId > this.lineStartRunId) {
+    while (this.runId > minRunId) {
       const endRun = this.runId < runs.length ? runs[this.runId] : undefined;
       const nextStartRun = this.runId + 1 < runs.length ? runs[this.runId + 1] : undefined;
 

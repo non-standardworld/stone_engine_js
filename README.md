@@ -210,6 +210,7 @@ import "@non-standardworld/stone-engine.js/auto";
 
 - ルビ、画像、フォームの部品、`<code>` や `<sup>` のようにフォントや大きさの違う文字、背景や枠のあるインライン要素を含むもの
 - `letter-spacing`、`text-indent`、`text-transform`、`font-feature-settings`（`palt` など）、`text-wrap: balance`、`text-shadow`、段組みなどを使っているもの、`::before` / `::after` で行の中に内容を足しているもの
+- 下線・打ち消し線の種類（点線や波線）、太さ、下線の位置（`text-underline-offset`）を指定しているもの、上線を引いているもの（エンジンは実線を、自分で決めた太さと位置に描くため）
 - フロートが回り込んでいるもの
 - `li`、`td`、`dd`、`figcaption` など、Shadow DOM を付けられない要素（既定の対象に含めていません。中に `<p>` があれば、その `<p>` は組まれます）
 
@@ -233,6 +234,8 @@ auto.report(); // 見つけた要素と状態（typeset、skipped と理由、qu
 auto.refresh(); // クラスの切り替えなど、CSS だけを変えたときに読み直す
 auto.destroy(); // やめて、元の表示に戻す
 ```
+
+`options` の `fonts` は、CSS から読み取ったフォントに項目単位で重なります。上の例のように `scale` だけを指定すると、`family` は CSS の `font-family` のままです。`direction` は CSS の `writing-mode` で決まるので、指定できません。
 
 `/auto` で始めた場合は、`import { autoStoneHandle } from "@non-standardworld/stone-engine.js/auto"` で同じものが取れます。
 

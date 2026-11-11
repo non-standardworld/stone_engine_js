@@ -34,7 +34,14 @@ import { columnLeft, spanRects } from "../render/spans.js";
 import { svgSize, svgString } from "../render/svg.js";
 import type { Direction, FontMeasurer, StoneOptions } from "../types.js";
 import { readAutoSource, type AutoSource } from "./source.js";
-import { blockSkipReason, directionOf, mergeAutoOptions, optionsFromStyle, type AutoSkipReason } from "./style.js";
+import {
+  blockSkipReason,
+  directionOf,
+  mergeAutoOptions,
+  optionsFromStyle,
+  type AutoSkipReason,
+  type AutoStoneOverrides,
+} from "./style.js";
 import { whiteSpaceModeOf, wrapsLines } from "./whitespace.js";
 
 /** 既定の範囲。data-stone 属性を付けた要素の中を組む。 */
@@ -53,8 +60,11 @@ export interface AutoStoneOptions {
   scope?: string;
   /** 範囲の中で組む要素のセレクター。既定 DEFAULT_AUTO_TARGETS。範囲の要素自身も、直下にテキストがあれば組む。 */
   targets?: string;
-  /** CSS から決めた設定に重ねる組版オプション（約物の扱い、禁則、欧文のスケールなど）。direction は CSS のものを使う。 */
-  options?: StoneOptions;
+  /**
+   * CSS から決めた設定に重ねる組版オプション（約物の扱い、禁則、欧文のスケールなど）。fonts は項目単位で重ねるので、
+   * { latin: { scale: 0.95 } } のように一部だけを指定できる。direction は CSS で決まるので、指定できない。
+   */
+  options?: AutoStoneOverrides;
   /** 画面に近い要素から組み、遠い要素は近づいてから組む。既定 true。 */
   lazy?: boolean;
   /** DOM の追加・変更を監視して、組み直す。既定 true。 */
@@ -123,10 +133,21 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /** 元の中身をそのまま表示する（組む前と、やめた後）。 */
 const SOURCE_VISIBLE = "display:contents";
 
-/** 元の中身を視覚的に隠す（スクリーンリーダーには読ませる）。SVG のテキストと二重に選択されないよう、選択の対象から外す。 */
+/**
+ * 元の中身を視覚的に隠す（スクリーンリーダーには読ませる）。SVG のテキストと二重に選択されないよう、選択の対象から外す。
+ * 中身の white-space は変えない。ここで nowrap にすると、中の要素が継承した値と自分で指定した値を計算値から見分けられず、
+ * 同じ中身でも、組む前に調べたときと、組んだ後に読み直したときで判定が変わってしまう。
+ */
 const SOURCE_HIDDEN =
   "position:absolute;inline-size:1px;block-size:1px;margin:-1px;padding:0;border:0;overflow:hidden;" +
-  "clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;user-select:none;-webkit-user-select:none";
+  "clip:rect(0,0,0,0);clip-path:inset(50%);user-select:none;-webkit-user-select:none";
+
+/**
+ * 隠した中身を入れる箱。1px の幅のまま折り返すと 1 文字や 1 単語ごとに行が分かれ、スクリーンリーダーが単語をつなげて
+ * 読むことがある（そのため、視覚的に隠す要素は nowrap にするのが定番）。nowrap の代わりに、ふつうの行の長さを持たせて
+ * 折り返させる。はみ出した分は、外側の 1px の箱が切り取る。
+ */
+const SOURCE_INNER_HIDDEN = "display:block;inline-size:40em";
 
 /**
  * 高さ 0 のブロック。行方向の長さ（横書きなら幅）を測るために置く。
@@ -172,7 +193,8 @@ const COPY_HOLDER_STYLE =
 interface Parts {
   root: ShadowRoot;
   source: HTMLElement;
-  slot: HTMLSlotElement;
+  /** source の中で <slot> を包む要素。 */
+  inner: HTMLElement;
   reference: HTMLElement;
   view: HTMLElement;
   sizer: HTMLElement;
@@ -336,8 +358,9 @@ function createParts(host: HTMLElement): Parts | null {
     return el;
   };
   const source = span("source", SOURCE_VISIBLE);
-  const slot = doc.createElement("slot");
-  source.append(slot);
+  const inner = span("source-inner", SOURCE_VISIBLE);
+  inner.append(doc.createElement("slot"));
+  source.append(inner);
   const reference = span("reference", SIZER_STYLE);
   const view = span("view", VIEW_STYLE);
   view.setAttribute("aria-hidden", "true");
@@ -352,7 +375,7 @@ function createParts(host: HTMLElement): Parts | null {
   view.append(sizer, ghost, probe, canvas);
   root.append(reference, source, view);
 
-  const parts: Parts = { root, source, slot, reference, view, sizer, ghost, probe, mark, canvas, block: null };
+  const parts: Parts = { root, source, inner, reference, view, sizer, ghost, probe, mark, canvas, block: null };
   view.addEventListener("click", (event) => forwardLinkClick(parts, event));
   partsOf.set(host, parts);
   partsOfSizer.set(sizer, parts);
@@ -369,7 +392,7 @@ class AutoStone implements AutoStoneHandle {
   private readonly candidates: string;
   /** 範囲の内外を決める要素を探すセレクター（範囲の要素と、data-stone で入り切りする要素）。 */
   private readonly markers: string;
-  private readonly overrides: StoneOptions | undefined;
+  private readonly overrides: AutoStoneOverrides | undefined;
   private readonly lazy: boolean;
   private readonly observes: boolean;
   private readonly debug: boolean;
@@ -592,11 +615,8 @@ class AutoStone implements AutoStoneHandle {
       if (reason) return { ok: false, reason };
       const style = blockStyleOf(cs);
       if (!style) return { ok: false, reason: "display" };
-      // 中身を隠しているあいだは、中身は隠している要素から white-space などを継承する
-      const baseStyle = parts?.block?.sourceHidden ? this.win.getComputedStyle(parts.slot) : cs;
       const read = readAutoSource(host, {
         blockStyle: cs,
-        baseStyle,
         mode: whiteSpaceModeOf(cs.whiteSpace) ?? "collapse",
         styleOf: (el, pseudo) => this.win.getComputedStyle(el, pseudo),
       });
@@ -668,6 +688,7 @@ class AutoStone implements AutoStoneHandle {
   private release(block: Block): void {
     const { parts, host } = block;
     parts.source.style.cssText = SOURCE_VISIBLE;
+    parts.inner.style.cssText = SOURCE_VISIBLE;
     parts.canvas.replaceChildren();
     parts.canvas.style.insetBlockStart = "0";
     parts.view.style.blockSize = "";
@@ -827,6 +848,7 @@ class AutoStone implements AutoStoneHandle {
       // 組むまでのあいだは、元の中身と同じ大きさを保つ
       if (block.contentSize !== null) parts.view.style.blockSize = px(block.contentSize);
       parts.source.style.cssText = SOURCE_HIDDEN;
+      parts.inner.style.cssText = SOURCE_INNER_HIDDEN;
       block.sourceHidden = true;
       changed = true;
     }

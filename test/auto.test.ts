@@ -65,6 +65,9 @@ const BLOCK: AutoComputedStyle = {
   marginBottom: "0px",
   marginLeft: "0px",
   textDecorationLine: "none",
+  textDecorationStyle: "solid",
+  textDecorationThickness: "auto",
+  textUnderlineOffset: "auto",
   textDecorationColor: "rgb(0, 0, 0)",
   content: "normal",
 };
@@ -171,10 +174,20 @@ describe("blockSkipReason", () => {
       textWrapStyle: _w,
       fontVariationSettings: _v,
       webkitTextFillColor: _f,
+      textDecorationThickness: _t,
+      textUnderlineOffset: _u,
       ...old
     } = BLOCK;
     expect(blockSkipReason(old)).toBeNull();
+    expect(blockSkipReason({ ...old, textDecorationLine: "underline" })).toBeNull();
     expect(directionOf({ writingMode: "vertical-rl" })).toBe("tbRl");
+  });
+
+  it("sets the block's own underline only when the engine can draw it as specified", () => {
+    const underlined = { ...BLOCK, textDecorationLine: "underline" };
+    expect(blockSkipReason(underlined)).toBeNull();
+    expect(blockSkipReason({ ...underlined, textDecorationStyle: "dotted" })).toBe("text-decoration");
+    expect(blockSkipReason({ ...underlined, textUnderlineOffset: "4px" })).toBe("text-decoration");
   });
 
   it("names the CSS that the engine cannot reproduce", () => {
@@ -232,11 +245,30 @@ describe("inlineSkipReason", () => {
     expect(reason({ letterSpacing: "1px" })).toBe("letter-spacing");
   });
 
-  it("compares white-space with what the element inherits, not with the block", () => {
-    // 組んだ後は、中身を隠している要素から nowrap を継承する
-    const hidden = { ...BLOCK, whiteSpace: "nowrap" };
-    expect(reason({ whiteSpace: "nowrap" }, hidden)).toBeNull();
-    expect(reason({ whiteSpace: "normal" }, hidden)).toBe("white-space");
+  it("compares white-space with the parent element", () => {
+    // 入れ子の要素は、親の要素と比べる（ブロックの直下の要素は、ブロックと比べる）
+    const parent = { ...INLINE, whiteSpace: "nowrap" };
+    expect(reason({ whiteSpace: "nowrap" }, parent)).toBeNull();
+    expect(reason({ whiteSpace: "normal" }, parent)).toBe("white-space");
+  });
+
+  it("does not set lines that the engine cannot draw as specified", () => {
+    const underline = { textDecorationLine: "underline" };
+    expect(reason(underline)).toBeNull();
+    expect(reason({ textDecorationLine: "line-through" })).toBeNull();
+    expect(reason({ textDecorationLine: "underline line-through" })).toBeNull();
+    // エンジンは実線を、自分で決めた太さと位置に描く
+    expect(reason({ ...underline, textDecorationStyle: "wavy" })).toBe("text-decoration");
+    expect(reason({ ...underline, textDecorationThickness: "3px" })).toBe("text-decoration");
+    expect(reason({ ...underline, textDecorationThickness: "from-font" })).toBe("text-decoration");
+    expect(reason({ ...underline, textUnderlineOffset: "3.4px" })).toBe("text-decoration");
+    // 打ち消し線に、下線の位置は関係ない
+    expect(reason({ textDecorationLine: "line-through", textUnderlineOffset: "3.4px" })).toBeNull();
+    // 上線は描けない
+    expect(reason({ textDecorationLine: "overline" })).toBe("text-decoration");
+    expect(reason({ textDecorationLine: "underline overline" })).toBe("text-decoration");
+    // 線を引いていない要素では、線の指定（継承した text-underline-offset など）を見ない
+    expect(reason({ textUnderlineOffset: "3.4px", textDecorationStyle: "dotted", textDecorationThickness: "2px" })).toBeNull();
   });
 });
 
@@ -280,6 +312,11 @@ describe("optionsFromStyle", () => {
     expect(merged.fontSize).toBe(16);
     expect(merged.fonts?.japanese).toEqual(base.fonts?.japanese);
     expect(merged.fonts?.latin).toMatchObject({ family: "Georgia, serif", scale: 0.92, weight: "400", ascent: 0.88 });
+    // フォントは一部の項目だけでも指定できる（family は CSS の font-family のまま）
+    const scaled = mergeAutoOptions(base, { fonts: { latin: { scale: 0.95 }, emoji: { scale: 0.9 } } });
+    expect(scaled.fonts?.latin).toMatchObject({ family: '"Noto Sans JP", sans-serif', scale: 0.95, weight: "400" });
+    expect(scaled.fonts?.japanese).toEqual(base.fonts?.japanese);
+    expect(scaled.fonts?.emoji).toEqual({ scale: 0.9 });
   });
 });
 
@@ -314,12 +351,11 @@ function el(
 }
 
 /** ブロック（<p>）の中身を読み取る。 */
-function read(children: (FakeNode | string)[], block: Partial<AutoComputedStyle> = {}, base?: AutoComputedStyle) {
+function read(children: (FakeNode | string)[], block: Partial<AutoComputedStyle> = {}) {
   const blockStyle = { ...BLOCK, ...block };
   const host = el("P", {}, children, {}, blockStyle);
   return readAutoSource(host as unknown as Element, {
     blockStyle,
-    baseStyle: base ?? blockStyle,
     mode: whiteSpaceModeOf(blockStyle.whiteSpace) ?? "collapse",
     styleOf: (node, pseudo) => {
       const fake = node as unknown as FakeNode;
@@ -406,12 +442,22 @@ describe("readAutoSource", () => {
     expect(read([link]).ok).toBe(true);
   });
 
-  it("compares the children of the block with what they inherit once the source is hidden", () => {
-    const hiddenBase = { ...BLOCK, whiteSpace: "nowrap" };
-    const child = el("EM", { fontStyle: "italic", whiteSpace: "nowrap" }, ["斜体"]);
-    const result = read(["普通", child], {}, hiddenBase);
-    // 空白のたたみ方はブロックの white-space（normal）のまま
-    expect(result.ok && result.source.text).toBe("普通斜体");
+  it("compares the white-space of the block's children with the block itself", () => {
+    // 折り返さない指定の要素は組めない。子が自分で normal を指定していても、ブロックと同じなら組める
+    expect(read(["普通", el("SPAN", { whiteSpace: "nowrap" }, ["折り返さない"])])).toEqual({ ok: false, reason: "white-space" });
+    const same = read(["普通", el("EM", { fontStyle: "italic", whiteSpace: "normal" }, ["斜体"])]);
+    expect(same.ok && same.source.text).toBe("普通斜体");
+    // ブロックが nowrap なら、継承した nowrap の子も組める
+    const nowrap = read(["普通", el("EM", { fontStyle: "italic", whiteSpace: "nowrap" }, ["斜体"])], { whiteSpace: "nowrap" });
+    expect(nowrap.ok && nowrap.source.text).toBe("普通斜体");
+  });
+
+  it("does not set a link whose underline has its own offset, thickness or style", () => {
+    const link = (style: Partial<AutoComputedStyle>) =>
+      read(["詳しくは", el("A", { textDecorationLine: "underline", ...style }, ["こちら"], { href: "/" })]);
+    expect(link({}).ok).toBe(true);
+    expect(link({ textUnderlineOffset: "3px" })).toEqual({ ok: false, reason: "text-decoration" });
+    expect(link({ textDecorationStyle: "dotted" })).toEqual({ ok: false, reason: "text-decoration" });
   });
 });
 

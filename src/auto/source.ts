@@ -27,13 +27,8 @@ export type AutoSourceResult = { ok: true; source: AutoSource } | { ok: false; r
 export type AutoComputedStyle = AutoStyle & SpanStyle & { content?: string };
 
 export interface ReadAutoSourceOptions {
-  /** ブロックの計算済みスタイル。 */
+  /** ブロックの計算済みスタイル。ブロックの直下の要素は、これと比べる（組む前も、組んだ後に読み直すときも同じ）。 */
   blockStyle: AutoComputedStyle;
-  /**
-   * ブロックの直下の要素がプロパティを継承する元の計算済みスタイル。ふつうは blockStyle と同じ。
-   * 組んだ後は、中身を隠している要素を通して white-space などを継承するので、その継承元を渡す。
-   */
-  baseStyle: AutoComputedStyle;
   /** 空白のたたみ方（ブロックの white-space から決める）。 */
   mode: WhiteSpaceMode;
   /** 要素の計算済みスタイル。pseudo を渡したときは、その疑似要素のもの。 */
@@ -65,7 +60,7 @@ function generatesContent(style: AutoComputedStyle | null): boolean {
  * ブロック自身の下線・打ち消し線は、テキスト全体の範囲にする。
  */
 export function readAutoSource(host: Element, options: ReadAutoSourceOptions): AutoSourceResult {
-  const { blockStyle, baseStyle, mode, styleOf } = options;
+  const { blockStyle, mode, styleOf } = options;
   const out = new CollapsedText(mode);
   const entries: { span: StoneSpan; element: Element; start: number; end: number }[] = [];
   let reason: AutoSkipReason | null = null;
@@ -111,7 +106,7 @@ export function readAutoSource(host: Element, options: ReadAutoSourceOptions): A
     entry.end = out.mark();
     describeElementSpan(entry.span, el, cs, parentStyle);
   };
-  for (const child of Array.from(host.childNodes)) walk(child, baseStyle);
+  for (const child of Array.from(host.childNodes)) walk(child, blockStyle);
   if (reason) return { ok: false, reason };
 
   const { text, offsets } = out.finish();

@@ -103,4 +103,4 @@ export {
   type AutoStoneReport,
   type AutoStoneState,
 } from "./auto/auto.js";
-export type { AutoSkipReason } from "./auto/style.js";
+export type { AutoSkipReason, AutoStoneOverrides } from "./auto/style.js";

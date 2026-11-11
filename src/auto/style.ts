@@ -7,7 +7,7 @@ auto/style.ts — CSS の計算済みスタイルから、組めるかどうか�
 
 import { JAPANESE_ASCENT_RATIO, JAPANESE_DESCENT_RATIO } from "../fonts.js";
 import { fontStyleOf } from "../render/spans.js";
-import { SCRIPTS, type Direction, type FontSpec, type StoneOptions, type TextAlign } from "../types.js";
+import { SCRIPTS, type Direction, type FontSpec, type Script, type StoneOptions, type TextAlign } from "../types.js";
 import { whiteSpaceModeOf } from "./whitespace.js";
 
 /** 組まずに見送った理由。 */
@@ -46,6 +46,8 @@ export type AutoSkipReason =
   | "word-break"
   /** text-shadow、圏点、-webkit-text-fill-color、文字の縁取り、透明度など。 */
   | "text-effect"
+  /** 線の種類（点線・波線・二重線）、太さ、下線の位置の指定（text-decoration-style / -thickness、text-underline-offset）と、上線。 */
+  | "text-decoration"
   /** ルビ。 */
   | "ruby"
   /** 画像・動画・SVG など。 */
@@ -109,6 +111,10 @@ export interface AutoStyle {
   textTransform: string;
   wordBreak?: string;
   textShadow: string;
+  textDecorationLine?: string;
+  textDecorationStyle?: string;
+  textDecorationThickness?: string;
+  textUnderlineOffset?: string;
   textEmphasisStyle?: string;
   webkitTextFillColor?: string;
   webkitTextStrokeWidth?: string;
@@ -153,6 +159,22 @@ export function directionOf(style: Pick<AutoStyle, "writingMode" | "textOrientat
   return null;
 }
 
+/**
+ * その要素が引いている線（下線・打ち消し線）のうち、エンジンが描けない指定があれば、その理由。
+ * エンジンは実線を、自分で決めた太さと位置に描く（render/spans.ts の decorationRects）。線の種類（点線・波線・二重線）、
+ * 太さ、下線の位置を指定している線は、組むと見た目が変わるので組まない。上線も描けない。線を引いていない要素では見ない。
+ */
+function decorationSkipReason(style: AutoStyle): AutoSkipReason | null {
+  const line = style.textDecorationLine;
+  if (line === undefined || line === "" || line === "none") return null;
+  const lines = line.split(/\s+/);
+  if (lines.some((name) => name !== "underline" && name !== "line-through")) return "text-decoration";
+  if (differsFrom(style.textDecorationStyle, "solid")) return "text-decoration";
+  if (differsFrom(style.textDecorationThickness, "auto")) return "text-decoration";
+  if (lines.includes("underline") && differsFrom(style.textUnderlineOffset, "auto")) return "text-decoration";
+  return null;
+}
+
 /** エンジンが再現できない文字まわりの CSS が効いていれば、その理由。ブロックにもインライン要素にも使う。 */
 function textSkipReason(style: AutoStyle): AutoSkipReason | null {
   if (!isZeroLength(style.letterSpacing)) return "letter-spacing";
@@ -168,7 +190,7 @@ function textSkipReason(style: AutoStyle): AutoSkipReason | null {
   if (differsFrom(style.textEmphasisStyle, "none")) return "text-effect";
   if (differsFrom(style.webkitTextFillColor, style.color)) return "text-effect";
   if (!isZeroLength(style.webkitTextStrokeWidth)) return "text-effect";
-  return null;
+  return decorationSkipReason(style);
 }
 
 /** ブロック（段落や見出し）のスタイルで組めない理由。組めるなら null。 */
@@ -207,8 +229,8 @@ function hasInlineBox(style: AutoStyle): boolean {
 
 /**
  * ブロックの中の要素のスタイルで組めない理由。組めるなら null。
- * parent はその要素がプロパティを継承する元（親要素。ブロックの直下の要素では、ブロックの中身の継承元）、block はブロック。
- * 文字色・下線・打ち消し線・太さ・スタイル（太字・斜体）は範囲として組めるので、ここでは見ない。
+ * parent は親の要素（ブロックの直下の要素では、ブロック自身）、block はブロック。
+ * 文字色、太さ・スタイル（太字・斜体）、実線の下線・打ち消し線は、範囲として組めるので見送らない。
  */
 export function inlineSkipReason(style: AutoStyle, parent: AutoStyle, block: AutoStyle): AutoSkipReason | null {
   if (style.display !== "inline" && style.display !== "contents") return "non-inline";
@@ -263,8 +285,17 @@ export function optionsFromStyle(style: AutoStyle, lineHeight: number): StoneOpt
   };
 }
 
+/**
+ * CSS から決めた設定に重ねる組版オプション。
+ * fonts は文字種ごとに項目単位で重ねるので、scale だけのように一部の項目だけを指定できる（family を省くと、CSS の font-family のまま）。
+ * direction は CSS の writing-mode で決まるので、指定できない。
+ */
+export type AutoStoneOverrides = Omit<StoneOptions, "direction" | "fonts"> & {
+  fonts?: Partial<Record<Script, Partial<FontSpec>>>;
+};
+
 /** CSS から作ったオプションに、利用者の上書きを重ねる。fonts は文字種ごとに項目単位で重ねる。 */
-export function mergeAutoOptions(base: StoneOptions, overrides: StoneOptions | undefined): StoneOptions {
+export function mergeAutoOptions(base: StoneOptions, overrides: AutoStoneOverrides | undefined): StoneOptions {
   if (!overrides) return base;
   const fonts: NonNullable<StoneOptions["fonts"]> = { ...base.fonts };
   for (const script of SCRIPTS) {

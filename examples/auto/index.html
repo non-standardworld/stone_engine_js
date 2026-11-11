@@ -1,0 +1,103 @@
+<!doctype html>
+<!-- data-stone-debug を付けると、組んだ要素と見送った要素に data-stone-state / data-stone-reason が付く（このデモの「組んだ場所を表示」用） -->
+<html lang="ja" data-stone-debug>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>stone-engine.js オートモード</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2214%22 font-size=%2214%22>石</text></svg>"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <strong class="bar__title">stone-engine.js オートモード（試作）</strong>
+      <label><input type="checkbox" id="toggle-auto" checked /> 組む</label>
+      <label><input type="checkbox" id="toggle-marks" /> 組んだ場所を表示</label>
+      <button type="button" id="add">段落を追加</button>
+      <span class="bar__status" id="status"></span>
+    </header>
+
+    <main>
+      <!-- 範囲に data-stone を付けるだけ。中の段落（p）と見出し（h1〜h6）、blockquote が組まれる -->
+      <article id="article" data-stone>
+        <h1>読み込むだけで、文字組みを整える</h1>
+        <p class="lead">
+          このページは普通の HTML です。スクリプトを 1 行読み込んで、記事に data-stone 属性を付けただけで、
+          段落と見出しが日本語組版エンジンで組み直されています。上の「組む」を切り替えると、
+          ブラウザの普通の表示と見比べられます。
+        </p>
+
+        <h2>約物が続くところ</h2>
+        <p>
+          括弧や句読点が続くと、普通の表示では間が空いて見えます。たとえば「これは『入れ子』の括弧です。」（補足も続きます）、
+          という文です。組むと、約物どうしの間が詰まり、行頭の「始め括弧」も行の頭にそろいます。
+        </p>
+
+        <h2>リンクや強調もそのまま</h2>
+        <p>
+          段落の中の<a href="https://github.com/non-standardworld/stone_engine_js">リンク</a>は、そのままクリックできます。
+          <strong>太字</strong>や<em>斜体</em>、<span class="accent">文字色</span>、<u>下線</u>、<s>打ち消し線</s>も、CSS
+          で決まった見た目のまま組まれます。ページ内の<a href="#vertical">縦書きの節</a>へのリンクも動きます。
+        </p>
+
+        <h2>行末をそろえる</h2>
+        <p class="justify">
+          text-align: justify を指定した段落は、行末がそろうように文字の間を均等に広げます。English words や
+          2026 のような数字が混ざっても、単語の途中は広げません。行頭に句読点や「ー」が来ないように、禁則処理も行います。HTML
+          のソースを途中で改行していても、和文の間に余計な空白は入りません。
+        </p>
+        <p>
+          改行（br）は<br />そのまま<br />改行になります。
+        </p>
+        <blockquote>引用（blockquote）の中に直接書いた文章も、段落と同じように組まれます。</blockquote>
+
+        <h2>内容で幅が決まる見出し</h2>
+        <div class="row">
+          <h3>フレックスの中の「見出し」</h3>
+          <span class="badge">NEW</span>
+        </div>
+        <p>
+          フレックスの子のように、幅が内容で決まる要素でも、テキストのときと同じ幅になります。
+        </p>
+
+        <h2>組まないもの</h2>
+        <p>
+          エンジンがまだ再現できないものを含む段落は、何もせずに元の表示のまま残します。「組んだ場所を表示」で理由が見られます。
+        </p>
+        <p><ruby>振<rt>ふ</rt></ruby>り<ruby>仮名<rt>がな</rt></ruby>（ルビ）のある段落は、読みが落ちてしまうので組みません。</p>
+        <p><code>code</code> のように、フォントや大きさの違う文字がある段落も組みません。</p>
+        <p class="tracked">字間（letter-spacing）を空けた段落も、今は組みません。</p>
+        <ul>
+          <li>箇条書きの項目（li）には Shadow DOM を付けられないので、対象にしていません。</li>
+        </ul>
+        <div class="float" aria-hidden="true"></div>
+        <p>
+          フロートが回り込んでいる段落も組みません。回り込みに合わせて行の長さを変える組み方に、エンジンが対応していないためです。
+          この段落は左の四角を避けて折り返しています。
+        </p>
+
+        <h2 id="vertical">縦書き</h2>
+        <div class="tate">
+          <p>
+            writing-mode: vertical-rl の中の段落は、縦書きで組まれます。句読点や括弧「」は縦組みの字形になり、
+            2026年11月のような数字は、2桁までなら縦中横になります。
+          </p>
+          <p>English のような欧文は、90度回転して組まれます。高さに合わせて折り返し、左へ行が増えていきます。</p>
+        </div>
+
+        <h2>後から増える段落</h2>
+        <p>上の「段落を追加」を押すと、ここに段落が増えます。追加された段落も、自動で組まれます。</p>
+      </article>
+    </main>
+
+    <!-- これだけでオートモードが始まる -->
+    <script type="module">
+      import "@non-standardworld/stone-engine.js/auto";
+    </script>
+    <!-- このデモの操作（切り替えと段落の追加）。オートモードには必要ない -->
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>

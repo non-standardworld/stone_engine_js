@@ -174,9 +174,62 @@ export interface StoneSource {
 }
 
 /** 計算済みの font-style（"oblique 10deg" など）を FontStyle にする。 */
-function fontStyleOf(value: string): FontStyle {
+export function fontStyleOf(value: string): FontStyle {
   if (value === "italic") return "italic";
   return value.startsWith("oblique") ? "oblique" : "normal";
+}
+
+/** 範囲を作るときに見る計算済みスタイルの項目（CSSStyleDeclaration をそのまま渡せる）。 */
+export type SpanStyle = Pick<
+  CSSStyleDeclaration,
+  "color" | "fontWeight" | "fontStyle" | "textDecorationLine" | "textDecorationColor"
+>;
+
+/** 下線・打ち消し線（CSS の text-decoration-line）と、文字色と違う線の色を span に書き込む。 */
+export function describeDecoration(span: StoneSpan, cs: SpanStyle): void {
+  const line = cs.textDecorationLine || "";
+  if (/\bunderline\b/.test(line)) span.underline = true;
+  if (/\bline-through\b/.test(line)) span.lineThrough = true;
+  if ((span.underline || span.lineThrough) && cs.textDecorationColor && cs.textDecorationColor !== cs.color) {
+    span.decorationColor = cs.textDecorationColor;
+  }
+}
+
+/**
+ * 要素のリンク（<a href>）と、親と違う文字色、線、親と違う太さ・スタイルを span に書き込む
+ * （readStoneSource とオートモードの auto/source.ts が使う）。cs は要素の、parentStyle は親の計算済みスタイル。
+ */
+export function describeElementSpan(
+  span: StoneSpan,
+  el: Element,
+  cs: SpanStyle | null,
+  parentStyle: SpanStyle | null,
+): void {
+  const href = el.tagName.toUpperCase() === "A" ? el.getAttribute("href") : null;
+  if (href !== null) {
+    span.href = href;
+    const target = el.getAttribute("target");
+    const rel = el.getAttribute("rel");
+    if (target) span.target = target;
+    if (rel) span.rel = rel;
+  }
+  if (!cs) return;
+  if (parentStyle && cs.color !== parentStyle.color) span.color = cs.color;
+  if (parentStyle && cs.fontWeight !== parentStyle.fontWeight) span.fontWeight = cs.fontWeight;
+  if (parentStyle && cs.fontStyle !== parentStyle.fontStyle) span.fontStyle = fontStyleOf(cs.fontStyle);
+  describeDecoration(span, cs);
+}
+
+/** 範囲に、描画や組版に反映するもの（リンク・文字色・線・太さ・スタイル）があるかどうか。 */
+export function isStyledSpan(span: StoneSpan): boolean {
+  return (
+    span.href !== undefined ||
+    span.color !== undefined ||
+    span.underline === true ||
+    span.lineThrough === true ||
+    span.fontWeight !== undefined ||
+    span.fontStyle !== undefined
+  );
 }
 
 /** テキストに含めない要素（ルビの読みなど）。 */
@@ -214,39 +267,11 @@ export function readStoneSource(root: Element): StoneSource {
     for (const child of Array.from(el.childNodes)) walk(child, cs);
     if (!entry) return;
     entry.span.end = text.length;
-    const span = entry.span;
-    const href = el.tagName.toUpperCase() === "A" ? el.getAttribute("href") : null;
-    if (href !== null) {
-      span.href = href;
-      const target = el.getAttribute("target");
-      const rel = el.getAttribute("rel");
-      if (target) span.target = target;
-      if (rel) span.rel = rel;
-    }
-    if (cs) {
-      if (parentStyle && cs.color !== parentStyle.color) span.color = cs.color;
-      if (parentStyle && cs.fontWeight !== parentStyle.fontWeight) span.fontWeight = cs.fontWeight;
-      if (parentStyle && cs.fontStyle !== parentStyle.fontStyle) span.fontStyle = fontStyleOf(cs.fontStyle);
-      const line = cs.textDecorationLine || "";
-      if (/\bunderline\b/.test(line)) span.underline = true;
-      if (/\bline-through\b/.test(line)) span.lineThrough = true;
-      if ((span.underline || span.lineThrough) && cs.textDecorationColor && cs.textDecorationColor !== cs.color) {
-        span.decorationColor = cs.textDecorationColor;
-      }
-    }
+    describeElementSpan(entry.span, el, cs, parentStyle);
   };
   walk(root, style(root));
 
-  const kept = entries.filter(
-    ({ span }) =>
-      span.end > span.start &&
-      (span.href !== undefined ||
-        span.color !== undefined ||
-        span.underline ||
-        span.lineThrough ||
-        span.fontWeight !== undefined ||
-        span.fontStyle !== undefined),
-  );
+  const kept = entries.filter(({ span }) => span.end > span.start && isStyledSpan(span));
   return { text, spans: kept.map((e) => e.span), elements: kept.map((e) => e.element) };
 }
 

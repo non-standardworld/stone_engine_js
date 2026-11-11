@@ -1,0 +1,203 @@
+/* オートモードのデモ。普通のサイトと同じように CSS で文字の見た目を決めているだけで、オートモード用の指定はない */
+
+:root {
+  color-scheme: light dark;
+  --text: #1f2328;
+  --muted: #59636e;
+  --background: #fdfdfb;
+  --surface: #f3f2ee;
+  --line: #d8d6cf;
+  --link: #0b57d0;
+  --accent: #c0392b;
+  --typeset: #2f81f7;
+  --skipped: #b7791f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e6e6e3;
+    --muted: #a3a6ab;
+    --background: #17181a;
+    --surface: #222427;
+    --line: #3a3d42;
+    --link: #8ab4f8;
+    --accent: #ff8a7a;
+    --typeset: #6cb6ff;
+    --skipped: #e3b341;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", YuGothic, Meiryo, sans-serif;
+  font-size: 17px;
+  line-height: 1.9;
+}
+
+main {
+  max-width: 38em;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 6rem;
+}
+
+h1 {
+  margin: 0 0 1.5rem;
+  font-size: 2rem;
+  line-height: 1.45;
+}
+
+h2 {
+  margin: 3rem 0 1rem;
+  font-size: 1.3rem;
+  line-height: 1.5;
+}
+
+h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+p {
+  margin-block: 0 1.2em;
+}
+
+a {
+  color: var(--link);
+}
+
+blockquote {
+  margin: 0 0 1.2em;
+  padding-inline-start: 1em;
+  border-inline-start: 3px solid var(--line);
+  color: var(--muted);
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.lead {
+  color: var(--muted);
+}
+
+.accent {
+  color: var(--accent);
+}
+
+.justify {
+  text-align: justify;
+}
+
+.tracked {
+  letter-spacing: 0.12em;
+}
+
+/* 幅が内容で決まる見出し（フレックスの子） */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.badge {
+  padding: 0.1em 0.6em;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.float {
+  float: left;
+  width: 6em;
+  height: 4.5em;
+  margin: 0.4em 1em 0.4em 0;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* 縦書き。高さを決めると、その高さで折り返す */
+.tate {
+  writing-mode: vertical-rl;
+  height: 21em;
+  max-width: 100%;
+  margin: 0 0 1.5rem;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: "Hiragino Mincho ProN", "Noto Serif JP", "Yu Mincho", serif;
+  line-height: 2;
+}
+
+/* デモの操作 */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.6rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.bar button {
+  font: inherit;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--background);
+  color: inherit;
+  cursor: pointer;
+}
+
+.bar__status {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「組んだ場所を表示」: data-stone-debug で付く属性を使う */
+.show-marks [data-stone-state] {
+  outline: 1px dashed var(--typeset);
+  outline-offset: 3px;
+}
+
+.show-marks [data-stone-state="skipped"] {
+  position: relative;
+  outline-color: var(--skipped);
+}
+
+.show-marks [data-stone-state="skipped"]::after {
+  content: attr(data-stone-reason);
+  position: absolute;
+  inset-block-start: -1.5em;
+  inset-inline-end: 0;
+  padding: 0 0.4em;
+  border-radius: 3px;
+  background: var(--skipped);
+  color: var(--background);
+  font: 11px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0;
+  writing-mode: horizontal-tb;
+}

@@ -7,7 +7,10 @@
   "description": "日本語組版エンジン stone_engine の JavaScript / TypeScript 移植。縦書き・禁則処理・約物半角・縦中横・文字種ごとのフォント指定を、ブラウザ標準のフォント描画の上で実現します。React 用コンポーネント同梱。",
   "license": "MIT",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/auto/index.js",
+    "./src/auto/index.ts"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -18,6 +21,10 @@
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
+    },
+    "./auto": {
+      "types": "./dist/auto/index.d.ts",
+      "import": "./dist/auto/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -34,6 +41,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "example": "npm run dev --workspace examples/react-router",
+    "example:auto": "npm run dev --workspace examples/auto",
     "site": "npm run dev --workspace site",
     "site:build": "npm run build --workspace site",
     "site:preview": "npm run build --workspace site && npm run preview --workspace site -- --port 4173 --host 127.0.0.1 --strictPort"

@@ -196,3 +196,62 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* オートモードのデモ（routes/auto.tsx）。ふつうのサイトと同じように CSS で文字の見た目を決めているだけ */
+.auto {
+  max-width: 720px;
+}
+
+.auto__nav {
+  margin: 0 0 24px;
+  font-size: 14px;
+}
+
+.auto__article {
+  font-size: 17px;
+  line-height: 1.9;
+}
+
+.auto__article--serif {
+  font-family: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+}
+
+.auto__article h1 {
+  margin: 0 0 20px;
+  font-size: 28px;
+  line-height: 1.45;
+}
+
+.auto__article h2 {
+  margin: 36px 0 12px;
+  font-size: 20px;
+  line-height: 1.5;
+}
+
+.auto__article p {
+  margin: 0 0 1.2em;
+}
+
+.auto__article a {
+  color: var(--accent);
+}
+
+.auto__justify {
+  text-align: justify;
+}
+
+.auto__controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.auto__controls button {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}

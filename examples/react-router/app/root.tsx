@@ -8,6 +8,9 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
+// オートモード: これを読み込むだけで、data-stone 属性を付けた範囲の中の段落と見出しが組まれる（routes/auto.tsx）。
+// サーバーでは何もしない
+import "@non-standardworld/stone-engine.js/auto";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [

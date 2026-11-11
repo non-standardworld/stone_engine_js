@@ -139,6 +139,9 @@ export default function Home() {
             Web フォント（Google Fonts など）もそのまま使えます。
           </p>
           <p>下のプレイグラウンドで設定を変えて試せます。文字をクリックすると、その文字のレイアウト情報を表示します。</p>
+          <p>
+            コンポーネントを使わずに、ふつうの JSX の段落を自動で組む<Link to="/auto">オートモードのデモ</Link>もあります。
+          </p>
         </div>
       </section>
 

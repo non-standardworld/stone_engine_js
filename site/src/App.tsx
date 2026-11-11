@@ -1,4 +1,4 @@
-import { StoneText } from "@non-standardworld/stone-engine.js/react";
+import { StoneText, type StoneTextProps } from "@non-standardworld/stone-engine.js/react";
 import { CodeBlock } from "./CodeBlock";
 import { Playground } from "./Playground";
 import { Sample } from "./Sample";
@@ -20,6 +20,20 @@ const ALIGN_TEXT =
 const TRUNCATE_TEXT =
   "領域に収まらない行は表示せず、続きがあるときは最後に表示する文字を省略記号にする。途中まで見える行も隠すので、省略記号はいつも 1 つだけになる。";
 const JAPANESE_PUNCTUATION_TEXT = "「待って……」と言った——“了解”‼ ※欧文の“Hello”は回転する。";
+
+/** children に要素を渡すサンプル。リンク・文字色・下線・打ち消し線・太字・斜体を組む。 */
+function RichText(props: Omit<StoneTextProps, "children" | "text">) {
+  return (
+    <StoneText fontSize={17} lineHeightScale={1.9} fonts={SANS} {...props}>
+      詳しくは
+      <a href={REPO} target="_blank" rel="noreferrer">
+        GitHub
+      </a>
+      へ。<span style={{ color: "#2f6f9f" }}>文字色</span>や<u>下線</u>、<s>打ち消し線</s>、<strong>太字 Bold</strong>、
+      <em>斜体 Italic</em>も組める。
+    </StoneText>
+  );
+}
 
 /** ドキュメントサイト本体。 */
 export function App() {
@@ -155,6 +169,24 @@ export function App() {
             </Sample>
 
             <Sample
+              title="リンクと装飾"
+              description="children に <a> や <strong> などの要素を渡すと、リンク・文字色・下線・打ち消し線・太字・斜体を CSS で決まった見た目のまま組みます。太字は太字のフォントで送り幅を測るので、隣の文字と重なりません。リンクはクリックできます。"
+              code={S.RICH_TEXT}
+              wide
+            >
+              <div className="sample__row">
+                <div className="sample__col">
+                  <div className="sample__label">横書き</div>
+                  <RichText width={300} />
+                </div>
+                <div className="sample__col">
+                  <div className="sample__label">direction="tbRl"</div>
+                  <RichText direction="tbRl" height={240} style={{ width: "fit-content", marginLeft: "auto" }} />
+                </div>
+              </div>
+            </Sample>
+
+            <Sample
               title="文字寄せ"
               description="行頭・中央・行末・均等。均等配置は最終行と改行で終わる行を除き、余白を文字間に均等に配ります。欧文の単語の途中と「……」「——」の間は空けません。"
               code={S.ALIGN}
@@ -232,6 +264,28 @@ export function App() {
           </p>
           <CodeBlock code={S.VERTICAL} />
 
+          <h3>リンクと装飾</h3>
+          <p>
+            <code>children</code> には <code>{"<a>"}</code> や React Router の <code>{"<Link>"}</code>、<code>{"<span style>"}</code>、<code>{"<u>"}</code>、<code>{"<s>"}</code>、<code>{"<strong>"}</code>、<code>{"<em>"}</code> などの要素も渡せます。要素の中のテキストも組み、リンク、親と違う文字色、下線・打ち消し線（<code>text-decoration-line</code>）、太さ・スタイル（<code>font-weight</code> / <code>font-style</code>）を SVG に反映します。
+          </p>
+          <ul>
+            <li>
+              リンクは SVG の <code>{"<a>"}</code> になり、クリックすると元の <code>{"<a>"}</code> をクリックしたことになるので、<code>{"<Link>"}</code> のクライアント側の遷移もそのまま動きます。キーボードのフォーカスは元の <code>{"<a>"}</code> が受け、SVG 側に枠を描きます。
+            </li>
+            <li>下線・打ち消し線は行ごとに矩形で描きます。縦書きの下線は列の右（傍線）に引きます。</li>
+            <li>
+              太字・斜体の文字は、文字種のフォントの太さ・スタイルだけを変えたフォントで送り幅を測って組みます。斜体は縦書きでも横書きと同じ向きに傾きます。
+            </li>
+            <li>
+              <code>{"<br>"}</code> は改行になり、<code>{"<rt>"}</code>（ルビの読み）は組みません。読み取るのは <code>children</code> の中の DOM が変わったときだけなので、外側のスタイルシートだけを変えたときは <code>key</code> を変えて作り直してください。
+            </li>
+          </ul>
+          <CodeBlock code={S.RICH_TEXT_USAGE} />
+          <p>
+            React 以外では、<code>readStoneSource(element)</code> で HTML の要素からテキストと範囲（<code>spans</code>）を読み取り、<code>mountStoneText</code> に渡します。
+          </p>
+          <CodeBlock code={S.RICH_TEXT_VANILLA} />
+
           <h3>サーバーサイドレンダリング</h3>
           <p>
             サーバーでは通常のテキストを描画し、クライアントでフォントの計測ができた時点で組版結果の SVG に置き換わります。ハイドレーションの不一致は起きません。Web フォントが未読み込みなら <code>document.fonts.load()</code> で読み込み、完了後に自動的にレイアウトし直します。
@@ -307,7 +361,9 @@ export function App() {
           <ul className="notes">
             <li>編集機能（STTextView、カーソル、選択、ルーペ）は移植していません。表示（STLabel）に相当する機能のみです。</li>
             <li>フォントは名前の配列ではなく CSS の font-family リストで指定します。グリフ単位のフォールバックはブラウザが行います。</li>
-            <li>縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの font-feature-settings に任せています。</li>
+            <li>
+              縦組み用グリフは GSUB を自前で辿る代わりに、ブラウザの font-feature-settings に任せています。vert が効かない Safari などの WebKit では、括弧・句読点・小書きの仮名などを横組みのグリフの回転と移動で描きます（<code>verticalForms</code> で描き方を固定できます）。
+            </li>
             <li>Intl.Segmenter が無い環境では単語分割が書記素分割にフォールバックします。</li>
             <li>
               均等配置の余白は、トークン（単語）間ではなく文字間に配ります。トークン間にだけ配ると、日本語の本文で文節ごとに大きな空きができるためです。

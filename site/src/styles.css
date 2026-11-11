@@ -220,8 +220,13 @@ pre code {
   margin-top: 0;
 }
 
-.section p {
+.section p,
+.section > ul:not(.notes) {
   max-width: 44em;
+}
+
+.section > ul:not(.notes) li {
+  margin-bottom: 4px;
 }
 
 /* ---------- samples ---------- */

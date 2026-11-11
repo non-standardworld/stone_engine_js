@@ -209,6 +209,68 @@ describe("layout tbRl", () => {
     expect(runOf(stone, "い").run.frame.y).toBe(5);
   });
 
+  it("does not break inside a tate-chu-yoko at the head of a column when kinsoku pushes characters out", () => {
+    const options = { direction: "tbRl", dividesByWords: true } as const;
+    // 12(10) + 々(10) = 20px で、「）」は入らない。「）」も「々」も列の先頭に置けないので、追い出しは列の先頭の縦中横まで戻る。
+    // 列の最初の run（1 桁目）まで戻すと「1」「2」「々）」に分かれるので、縦中横のまとまりを列に残して改行する
+    const ctx = lay("12々）", options, { height: 27 });
+    expect(lines(ctx)).toEqual(["12", "々）"]);
+    const one = runOf(ctx, "1").run;
+    const two = runOf(ctx, "2").run;
+    expect(two.frame.y).toBe(one.frame.y);
+    expect(two.frame.x).toBeCloseTo(one.frame.x + one.advance); // 横に並んだまま
+    // 1 桁の縦中横で始まる列と同じ分かれ方になる
+    expect(lines(lay("1々）", options, { height: 27 }))).toEqual(["1", "々）"]);
+    // 折り返して始まる列でも同じ（「字々」の次の列が「12」で始まり、「、」が入らず、「ぁ」も「、」も列の先頭に置けない）
+    expect(lines(lay("字々12ぁ、", options, { height: 29.85 }))).toEqual(["字々", "12", "ぁ、"]);
+    // 縦中横だけで列がいっぱいのときも、1 桁目の後ろでは改行しない
+    expect(lines(lay("12）", options, { height: 10 }))).toEqual(["12", "）"]);
+    expect(lines(lay("12、34。", options, { height: 15 }))).toEqual(["12", "、", "34", "。"]);
+    // 縦中横の手前に文字があれば、今までどおり縦中横ごと次の列へ追い出す
+    expect(lines(lay("あ12々）", options, { height: 37 }))).toEqual(["あ", "12々）"]);
+    // 禁則を切れば追い出さない
+    expect(lines(lay("12々）", { ...options, kinsoku: false }, { height: 27 }))).toEqual(["12々", "）"]);
+  });
+
+  it("keeps a tate-chu-yoko at the head of a column inside the area with every textAlign", () => {
+    // 2 桁目だけの列は、行末寄せ（trailing）で列の長さが 0 と見積もられて領域の外に置かれ、その列から後ろが切り詰められていた
+    for (const textAlign of ["leading", "center", "trailing", "justify"] as const) {
+      const ctx = lay("12々）", { direction: "tbRl", dividesByWords: true, textAlign }, { height: 27 });
+      expect(lines(ctx)).toEqual(["12", "々）"]);
+      expect(ctx.isTruncated).toBe(false);
+      expect(shown(ctx)).toBe("12々）");
+      const one = runOf(ctx, "1").run;
+      const two = runOf(ctx, "2").run;
+      expect(two.frame.y).toBe(one.frame.y);
+      for (const run of ctx.runs) {
+        expect(run.frame.y).toBeGreaterThanOrEqual(0);
+        expect(run.frame.y + run.frame.height).toBeLessThanOrEqual(27 + 1e-9);
+      }
+    }
+    const trailing = lay("12々）", { direction: "tbRl", dividesByWords: true, textAlign: "trailing" }, { height: 27 });
+    const digit = runOf(trailing, "2").run;
+    expect(digit.frame.y + digit.frame.height).toBeCloseTo(27); // 列の下端にそろう
+  });
+
+  it("never puts the two digits of a tate-chu-yoko in different columns, whatever the column height", () => {
+    // 縦中横の後ろに行頭禁則の文字が続く並びを、1 文字ぶんから 6 文字ぶんまでの高さで組む
+    const texts = ["12々）", "字々12ぁ、", "12、34。56」", "あ12っ！？」い", "全12！？」と驚く", "12ー！」34ゝ々。"];
+    for (const text of texts) {
+      for (let height = 10; height <= 60; height += 2.5) {
+        for (const textAlign of ["leading", "center", "trailing", "justify"] as const) {
+          const ctx = lay(text, { direction: "tbRl", dividesByWords: true, textAlign }, { height });
+          for (const token of ctx.tokens) {
+            if (token.end - token.start !== 2 || !ctx.isTateChuYokoToken(token)) continue;
+            expect(ctx.runs[token.start + 1].line).toBe(ctx.runs[token.start].line);
+            expect(ctx.runs[token.start + 1].frame.y).toBe(ctx.runs[token.start].frame.y);
+          }
+          // 高さだけを決めた領域では、どの文字も列に収まる（切り詰めない）
+          expect(ctx.isTruncated).toBe(false);
+        }
+      }
+    }
+  });
+
   it("justifies columns", () => {
     const ctx = lay("あいうえおか", { direction: "tbRl", textAlign: "justify" }, { height: 45 });
     expect(lines(ctx)).toEqual(["あいうえ", "おか"]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { svgString } from "../src/index.js";
+import { svgSize, svgString } from "../src/index.js";
 import { lay, lines, runOf, shown } from "./helpers.js";
 
 describe("layout tbRl", () => {
@@ -637,5 +637,418 @@ describe("truncation tbRl", () => {
     expect(shown(ctx)).toBe("あいうえ\nか");
     const first = ctx.runs[0].frame;
     expect(first.x + first.width).toBeCloseTo(22); // 1 列目は右端にそろう
+  });
+});
+
+describe("columns that hold only a tate-chu-yoko narrower than 1em", () => {
+  // 1 桁の縦中横（5.225px）は列の中央に寄せるので、矩形の両側に 2.3875px ずつ空きがある。数字だけの列（改行の run も、ほかの文字も
+  // 無い列）が端にあっても、列を寄せる位置と renderedSize は、数字の矩形ではなく列の 1em の箱で決める
+  const options = { direction: "tbRl" } as const;
+
+  it("aligns the 1em box of the column, not the digit, with the edge of the area", () => {
+    // 幅 20px は 2 列ちょうど。数字の矩形で寄せると、「7」が領域の右端に付いて、「あ」の列が 2.3875px 右にずれた
+    const right = lay("7あ", options, { height: 10, width: 20 });
+    expect(lines(right)).toEqual(["7", "あ"]);
+    expect(runOf(right, "7").run.frame.x).toBeCloseTo(12.3875);
+    expect(runOf(right, "あ").run.frame.x).toBeCloseTo(0);
+    // 左寄せで左端の列が数字だけのときは、「7」が領域の左端に付いて、列の箱が左に 2.3875px 出た
+    const left = lay("あ7", { ...options, directionAlign: "end" }, { height: 10, width: 20 });
+    expect(runOf(left, "あ").run.frame.x).toBeCloseTo(10);
+    expect(runOf(left, "7").run.frame.x).toBeCloseTo(2.3875);
+    // 数字だけを 1 列ぶんの幅に組むと、列の中央に来る（右端に付いた）
+    expect(runOf(lay("7", options, { width: 10 }), "7").run.frame.x).toBeCloseTo(2.3875);
+    // 中央寄せは、列の箱の並び（20px）を領域の中央に置く（数字の矩形までの 17.6125px を中央に置いた）
+    const middle = lay("7あ", { ...options, directionAlign: "middle" }, { height: 10, width: 30 });
+    expect(runOf(middle, "あ").run.frame.x).toBeCloseTo(5);
+    expect(runOf(middle, "7").run.frame.x).toBeCloseTo(17.3875);
+    // 行送りを空けても、列は右端から行送りずつ並ぶ（行送り 15px + 1em = 25px）
+    const spaced = lay("7あ", { ...options, lineHeightScale: 1.5 }, { height: 10, width: 25 });
+    expect(runOf(spaced, "7").run.frame.x).toBeCloseTo(17.3875);
+    expect(runOf(spaced, "あ").run.frame.x).toBeCloseTo(0);
+  });
+
+  it("puts every column where it would be if the digits were full-width characters, with every directionAlign", () => {
+    // 数字を全角の文字に置き換えたテキストと、列の位置・renderedSize が同じになる（縦中横は、数字の中央が列の中央）
+    for (const directionAlign of ["start", "middle", "end"] as const) {
+      for (const width of [undefined, 30, 40, 47.5]) {
+        for (const text of ["7あい", "あい7", "7あ8", "あ7い", "7"]) {
+          const size = { height: 10, width };
+          const ctx = lay(text, { ...options, directionAlign }, size);
+          const reference = lay(text.replace(/\d/g, "字"), { ...options, directionAlign }, size);
+          expect(ctx.isTruncated).toBe(false);
+          // 列の箱の左端は run の矩形から求め直さないので、丸め誤差も出ない
+          expect(ctx.renderedSize.width).toBe(reference.renderedSize.width);
+          ctx.runs.forEach((run, i) => {
+            const frame = reference.runs[i].frame;
+            expect(run.line).toBe(reference.runs[i].line);
+            expect(run.frame.x + run.frame.width / 2).toBeCloseTo(frame.x + frame.width / 2);
+          });
+        }
+      }
+    }
+  });
+
+  it("measures renderedSize by the column boxes when the width is not fixed", () => {
+    // 数字の矩形で測ると 17.6125px（2 列ぶんより 2.3875px 狭い）で、「7」が x = 0 に付いた
+    const ctx = lay("あ7", options, { height: 10 });
+    expect(ctx.renderedSize.width).toBe(20);
+    expect(svgSize(ctx).width).toBe(20);
+    expect(runOf(ctx, "あ").run.frame.x).toBe(10);
+    expect(runOf(ctx, "7").run.frame.x).toBeCloseTo(2.3875);
+    // 数字だけなら 1 列ぶん（5.225px だった）
+    const alone = lay("7", options);
+    expect(alone.renderedSize).toEqual({ width: 10, height: 10 });
+    expect(runOf(alone, "7").run.frame.x).toBeCloseTo(2.3875);
+    // 改行で区切った番号は、最後の列だけ改行の run が無い（27.6125px だった）
+    const list = lay("1\n2\n3", options);
+    expect(list.renderedSize.width).toBe(30);
+    expect(runOf(list, "1").run.frame.x).toBeCloseTo(22.3875);
+    expect(runOf(list, "3").run.frame.x).toBeCloseTo(2.3875);
+    // 2 桁でも、1em より狭ければ同じ（欧文のスケール 0.9 で 9.9px。19.95px だった）
+    const pair = lay("あ78", { ...options, dividesByWords: true, fonts: { latin: { family: "", scale: 0.9 } } }, { height: 10 });
+    expect(pair.renderedSize.width).toBe(20);
+    expect(runOf(pair, "7").run.frame.x).toBeCloseTo(0.05);
+  });
+
+  it("still shows a column whose digit fits when its 1em box does not, keeping the digit inside the area", () => {
+    // 幅 18px は、列の箱の並び（20px）には足りないが、数字の矩形までの並び（17.6125px）は収まる。今までどおり 2 列とも表示する。
+    // 列の箱を領域の右端に合わせると「あ」の列が左に 2px 出るので、収まるところまで戻す（「7」の列の箱の空きが、右に 2px 出る）
+    const right = lay("7あ", options, { height: 10, width: 18 });
+    expect(right.isTruncated).toBe(false);
+    expect(shown(right)).toBe("7あ");
+    expect(runOf(right, "あ").run.frame.x).toBeCloseTo(0);
+    const seven = runOf(right, "7").run;
+    expect(seven.frame.x).toBeCloseTo(12.3875);
+    expect(seven.frame.x + seven.frame.width).toBeLessThan(18);
+    // 中央寄せ・左寄せでも同じ位置になる
+    for (const directionAlign of ["middle", "end"] as const) {
+      const ctx = lay("7あ", { ...options, directionAlign }, { height: 10, width: 18 });
+      expect(shown(ctx)).toBe("7あ");
+      expect(runOf(ctx, "あ").run.frame.x).toBeCloseTo(0);
+      expect(runOf(ctx, "7").run.frame.x).toBeCloseTo(12.3875);
+    }
+    // 左端の列が数字だけなら、列の箱の空きが左に 2px 出て、数字は領域の中に残る
+    const left = lay("あ7", options, { height: 10, width: 18 });
+    expect(shown(left)).toBe("あ7");
+    expect(runOf(left, "あ").run.frame.x).toBeCloseTo(8);
+    expect(runOf(left, "7").run.frame.x).toBeCloseTo(0.3875);
+    // 数字だけの 1 列も、数字が収まる幅（6px）なら表示する
+    const alone = lay("7", options, { width: 6 });
+    expect(shown(alone)).toBe("7");
+    expect(runOf(alone, "7").run.frame.x).toBeCloseTo(0);
+    // 収めるための縮小もしない
+    const shrink = { ...options, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 };
+    expect(lay("7あ", shrink, { height: 10, width: 18 }).adjustFontScale).toBe(1);
+    // 数字の矩形も収まらない幅（17.6px）では、今までどおりその列から後ろを隠す。省略記号を置く 1 列目の箱は、領域の右端にそろう
+    const narrow = lay("7あ", options, { height: 10, width: 17.6 });
+    expect(narrow.isTruncated).toBe(true);
+    expect(shown(narrow)).toBe("…");
+    expect(runOf(narrow, "あ").run.visibility).toBe("invisible");
+    expect(runOf(narrow, "7").run.frame.x).toBeCloseTo(9.9875);
+    expect(lay("7", options, { width: 5 }).isTruncated).toBe(true);
+  });
+
+  it("leaves a column alone when a newline or another character already spans its 1em box", () => {
+    // 改行で終わる列は、改行の run の矩形が列の箱（幅 1em）になっている
+    const newline = lay("7\nあい", options, { width: 20 });
+    expect(newline.renderedSize.width).toBe(20);
+    expect(runOf(newline, "7").run.frame.x).toBeCloseTo(12.3875);
+    expect(runOf(newline, "あ").run.frame.x).toBe(0);
+    // 真ん中の列が数字だけでも、端の列は文字の矩形で決まる
+    const inner = lay("あ7い", options, { height: 10, width: 30 });
+    expect(runOf(inner, "あ").run.frame.x).toBe(20);
+    expect(runOf(inner, "7").run.frame.x).toBeCloseTo(12.3875);
+    expect(runOf(inner, "い").run.frame.x).toBe(0);
+    // 縦中横にしない数字は回転して、矩形が列の幅を持つ
+    const rotated = lay("7あ", { ...options, allowsTateChuYoko: false }, { height: 10, width: 20 });
+    expect(runOf(rotated, "7").run.frame).toMatchObject({ x: 10, width: 10 });
+    expect(runOf(rotated, "あ").run.frame.x).toBe(0);
+  });
+
+  it("does not move anything, not even by a rounding error, when the digit shares its column with other characters", () => {
+    // 数字と文字が同じ列にあれば、列の端は今までどおり文字の矩形で決まる。列の箱の左端を、中央に寄せた数字の矩形から求め直すと
+    // 丸め誤差が出て、renderedSize の幅が 82.35000000000001 から 82.35000000000002 に変わるようなことが起きる（SVG の幅は
+    // renderedSize を切り上げて決める）。数字を全角の文字に置き換えたテキストと、ほかの文字の位置と renderedSize が、
+    // 1 ビットも違わないことを確かめる
+    for (const fontSize of [10, 13.5, 16, 17]) {
+      for (const lineHeightScale of [1, 1.2, 1.7]) {
+        for (const directionAlign of ["start", "middle", "end"] as const) {
+          for (const width of [undefined, 200]) {
+            const style = { ...options, fontSize, lineHeightScale, directionAlign };
+            const ctx = lay("7月\n晴れ7\nあ7い\n月7", style, { width });
+            const reference = lay("字月\n晴れ字\nあ字い\n月字", style, { width });
+            expect(ctx.renderedSize.width).toBe(reference.renderedSize.width);
+            ctx.runs.forEach((run, i) => {
+              if (run.char !== "7") expect(run.frame.x).toBe(reference.runs[i].frame.x);
+            });
+          }
+        }
+      }
+    }
+  });
+
+  it("keeps the overhang of a wider tate-chu-yoko inside the area as before when another edge column holds only a narrow one", () => {
+    // 右端の列は 2 桁（10.45px。列の箱の両側に 0.225px はみ出す）、左端の列は 1 桁だけ。列の箱の並びは 30px
+    const mixed = { ...options, dividesByWords: true } as const;
+    // 幅を決めないとき: 左は「7」の列の箱から、右は「78」のはみ出しまで（数字の矩形で測ると 27.8375px だった）
+    const auto = lay("78あ7", mixed, { height: 10 });
+    expect(auto.renderedSize.width).toBeCloseTo(30.225);
+    expect(runOf(auto, "7", 1).run.frame.x).toBeCloseTo(2.3875);
+    expect(runOf(auto, "あ").run.frame.x).toBeCloseTo(10);
+    // 幅 30px・右寄せ: 「78」のはみ出しを領域に収めるので、列が 0.225px 左に寄る（「7」の列の箱の空きが左に出るが、数字は収まっている）
+    const start = lay("78あ7", mixed, { height: 10, width: 30 });
+    expect(start.isTruncated).toBe(false);
+    const eight = runOf(start, "8").run;
+    expect(eight.frame.x + eight.frame.width).toBeCloseTo(30);
+    expect(runOf(start, "あ").run.frame.x).toBeCloseTo(9.775);
+    expect(runOf(start, "7", 1).run.frame.x).toBeCloseTo(2.1625);
+    // 左寄せ: 「7」の列の箱を領域の左端に合わせる（列の箱の並びがちょうど収まり、「78」が右に 0.225px はみ出す）
+    const end = lay("78あ7", { ...mixed, directionAlign: "end" }, { height: 10, width: 30 });
+    expect(end.isTruncated).toBe(false);
+    expect(runOf(end, "7", 1).run.frame.x).toBeCloseTo(2.3875);
+    expect(runOf(end, "あ").run.frame.x).toBeCloseTo(10);
+    const last = runOf(end, "8").run;
+    expect(last.frame.x + last.frame.width).toBeCloseTo(30.225);
+  });
+});
+
+describe("columns that hold only upright characters whose frame is not 1em wide", () => {
+  // 正立の文字の矩形は、列の左端から横書きの送り幅ぶん。半角カナ（5.5px）、スケールを変えた和文・絵文字、送り幅が 1em でない絵文字
+  // （Apple Color Emoji は 24px 未満で 1.1〜1.3em。ここでは絵文字のスケール 1.24 で 12.4px にする）は、矩形が列の 1em の箱と違う。
+  // こういう文字だけの列（改行の run も、全角の文字も、回転する欧文も無い列）が右端にあっても、列を寄せる位置と renderedSize は、
+  // 矩形ではなく列の 1em の箱（矩形の左端から 1em）で決める。描く位置と矩形は変えない
+  const options = { direction: "tbRl" } as const;
+  const smallJapanese = { ...options, fonts: { japanese: { family: "", scale: 0.9 } } } as const;
+  const largeJapanese = { ...options, fonts: { japanese: { family: "", scale: 1.1 } } } as const;
+  const smallEmoji = { ...options, fonts: { emoji: { family: "", scale: 0.8 } } } as const;
+  const wideEmoji = { ...options, fonts: { emoji: { family: "", scale: 1.24 } } } as const;
+
+  it("aligns the 1em box of a column of half-width kana, not its advance, with the edge of the area", () => {
+    // 幅 20px は 2 列ちょうど。矩形で寄せると、「ｱ」の矩形（5.5px）が領域の右端に付いて、どの列も 4.5px 右にずれた
+    // （「ｱ」の列の箱が領域の右に 4.5px 出た）
+    const right = lay("ｱあ", options, { height: 10, width: 20 });
+    expect(lines(right)).toEqual(["ｱ", "あ"]);
+    expect(runOf(right, "ｱ").run.frame).toEqual({ x: 10, y: 0, width: 5.5, height: 10 });
+    expect(runOf(right, "あ").run.frame.x).toBe(0);
+    // 文字は今までどおり列の左端から描く（矩形も動かさない）
+    expect(runOf(right, "ｱ").run.position.x).toBe(10);
+    // 1 列ぶんの幅に組むと、列の左端に来る（右端に付いて、x = 4.5 だった）
+    expect(runOf(lay("ｱ", options, { width: 10 }), "ｱ").run.frame.x).toBe(0);
+    // 中央寄せは、列の箱の並び（20px）を領域の中央に置く（矩形までの 15.5px を中央に置いて、2.25px 右にずれた）
+    const middle = lay("ｱあ", { ...options, directionAlign: "middle" }, { height: 10, width: 30 });
+    expect(runOf(middle, "あ").run.frame.x).toBe(5);
+    expect(runOf(middle, "ｱ").run.frame.x).toBe(15);
+    // 行送りを空けても、列は右端から行送りずつ並ぶ（行送り 15px + 1em = 25px）
+    const spaced = lay("ｱあ", { ...options, lineHeightScale: 1.5 }, { height: 10, width: 25 });
+    expect(runOf(spaced, "ｱ").run.frame.x).toBe(15);
+    expect(runOf(spaced, "あ").run.frame.x).toBe(0);
+    // どの列も半角カナだけ
+    const kana = lay("ﾊﾝｶｸｶﾅ", options, { height: 20, width: 30 });
+    expect(lines(kana)).toEqual(["ﾊﾝ", "ｶｸ", "ｶﾅ"]);
+    expect(kana.runs.map((run) => run.frame.x)).toEqual([20, 20, 10, 10, 0, 0]);
+  });
+
+  it("does the same for Japanese characters and emoji set at a scale other than 1", () => {
+    // 和文のスケール 0.9（9px）: 矩形で寄せると 1px 右にずれた
+    const japanese = lay("あい", smallJapanese, { height: 10, width: 20 });
+    expect(runOf(japanese, "あ").run.frame).toMatchObject({ x: 10, width: 9 });
+    expect(runOf(japanese, "い").run.frame.x).toBe(0);
+    // 絵文字のスケール 0.8（8px）: 2px 右にずれた
+    const emoji = lay("😀あ", smallEmoji, { height: 10, width: 20 });
+    expect(runOf(emoji, "😀").run.frame).toMatchObject({ x: 10, width: 8 });
+    expect(runOf(emoji, "あ").run.frame.x).toBe(0);
+    // 1em より広い文字（12.4px）: 矩形で寄せると、箱の右にはみ出す送り幅（2.4px）のぶん、どの列も左にずれた
+    const wide = lay("😀と書く", wideEmoji, { height: 20, width: 30 });
+    expect(lines(wide)).toEqual(["😀と", "書く"]);
+    expect(runOf(wide, "😀").run.frame).toMatchObject({ x: 20, width: 12.4 });
+    expect(runOf(wide, "と").run.frame.x).toBe(20);
+    expect(runOf(wide, "書").run.frame.x).toBe(10);
+    // 中央寄せも、列の箱の並び（20px）を中央に置く（送り幅のはみ出しを含む 22.4px を中央に置いて、1.2px 左にずれた）
+    const middle = lay("😀と書く", { ...wideEmoji, directionAlign: "middle" }, { height: 20, width: 30 });
+    expect(runOf(middle, "😀").run.frame.x).toBe(15);
+    expect(runOf(middle, "書").run.frame.x).toBe(5);
+  });
+
+  it("puts every column where it would be if the characters were full-width, with every directionAlign", () => {
+    // 半角カナ・絵文字を全角の文字に置き換えたテキストと、列の位置（矩形の左端）・renderedSize が同じになる。
+    // 矩形の左端はもともと列の左端なので、丸め誤差も出ない
+    const cases = [
+      [options, ["ｱあい", "あいｱ", "ｱあｲ", "あｱい", "ｱ", "ｱｲｳ"]],
+      [wideEmoji, ["😀あい", "あい😀", "😀あ😀", "あ😀い", "😀"]],
+      [smallEmoji, ["😀あい", "😀あ😀", "😀"]],
+    ] as const;
+    for (const [style, texts] of cases) {
+      for (const directionAlign of ["start", "middle", "end"] as const) {
+        for (const width of [undefined, 30, 40, 47.5]) {
+          for (const text of texts) {
+            const size = { height: 10, width };
+            const ctx = lay(text, { ...style, directionAlign }, size);
+            const reference = lay(text.replace(/[ｱ-ﾝ]|😀/gu, "字"), { ...style, directionAlign }, size);
+            const label = JSON.stringify({ text, directionAlign, width });
+            expect(ctx.isTruncated, label).toBe(false);
+            expect(ctx.renderedSize.width, label).toBe(reference.renderedSize.width);
+            ctx.runs.forEach((run, i) => {
+              expect(run.line, label).toBe(reference.runs[i].line);
+              expect(run.frame.x, label).toBe(reference.runs[i].frame.x);
+            });
+          }
+        }
+      }
+    }
+    // スケールを変えた和文は、スケール 1 で組んだときと同じ列の位置になる
+    for (const style of [smallJapanese, largeJapanese]) {
+      for (const directionAlign of ["start", "middle", "end"] as const) {
+        for (const width of [undefined, 30, 40, 47.5]) {
+          const size = { height: 10, width };
+          const ctx = lay("あいう", { ...style, directionAlign }, size);
+          const reference = lay("あいう", { ...options, directionAlign }, size);
+          expect(ctx.isTruncated).toBe(false);
+          expect(ctx.renderedSize.width).toBe(reference.renderedSize.width);
+          expect(ctx.runs.map((run) => run.frame.x)).toEqual(reference.runs.map((run) => run.frame.x));
+        }
+      }
+    }
+  });
+
+  it("measures renderedSize by the column boxes when the width is not fixed", () => {
+    // 矩形で測ると 5.5px（1 列ぶんより 4.5px 狭い）だった
+    const alone = lay("ｱ", options);
+    expect(alone.renderedSize).toEqual({ width: 10, height: 10 });
+    expect(svgSize(alone).width).toBe(10);
+    expect(runOf(alone, "ｱ").run.frame.x).toBe(0);
+    expect(lay("ｶﾅ", options).renderedSize).toEqual({ width: 10, height: 20 });
+    // 右端の列が半角カナだけ（15.5px だった。文字の位置は、どちらも変わらない）
+    const first = lay("ｱあ", options, { height: 10 });
+    expect(first.renderedSize.width).toBe(20);
+    expect(runOf(first, "ｱ").run.frame.x).toBe(10);
+    expect(runOf(first, "あ").run.frame.x).toBe(0);
+    // スケールを下げた和文（19px だった）
+    expect(lay("あい", smallJapanese, { height: 10 }).renderedSize.width).toBe(20);
+    // 1em より広い文字は、箱の右にはみ出す送り幅を数えない（22.4px と 12.4px だった）
+    const wide = lay("😀あ", wideEmoji, { height: 10 });
+    expect(wide.renderedSize.width).toBe(20);
+    expect(svgSize(wide).width).toBe(20);
+    expect(runOf(wide, "😀").run.frame).toMatchObject({ x: 10, width: 12.4 });
+    expect(lay("😀", wideEmoji).renderedSize.width).toBe(10);
+    expect(lay("あい", largeJapanese, { height: 10 }).renderedSize.width).toBe(20);
+  });
+
+  it("shows every column whose 1em box fits when a character wider than 1em is in the rightmost column", () => {
+    // 幅 20px は 2 列ちょうど。矩形で見ると、「😀」の送り幅が箱の右に 2.4px はみ出すぶん 2 列目が収まらず、「😀…」になった
+    const emoji = lay("😀と書く", wideEmoji, { height: 20, width: 20 });
+    expect(emoji.isTruncated).toBe(false);
+    expect(shown(emoji)).toBe("😀と書く");
+    // 列の箱を領域に収める。「😀」の矩形は、領域の右に 2.4px 出る（描く位置は列の左端のまま）
+    expect(runOf(emoji, "😀").run.frame).toMatchObject({ x: 10, width: 12.4 });
+    expect(runOf(emoji, "と").run.frame.x).toBe(10);
+    expect(runOf(emoji, "書").run.frame.x).toBe(0);
+    // 中央寄せ・左寄せでも同じ
+    for (const directionAlign of ["middle", "end"] as const) {
+      const ctx = lay("😀と書く", { ...wideEmoji, directionAlign }, { height: 20, width: 20 });
+      expect(shown(ctx)).toBe("😀と書く");
+      expect(runOf(ctx, "😀").run.frame.x).toBe(10);
+      expect(runOf(ctx, "書").run.frame.x).toBe(0);
+    }
+    // スケールを上げた和文（11px）。どの列も箱の右に 1px はみ出す。「あ…」になった
+    const japanese = lay("あい\nうえ", largeJapanese, { width: 20 });
+    expect(japanese.isTruncated).toBe(false);
+    expect(shown(japanese)).toBe("あい\nうえ");
+    expect(runOf(japanese, "あ").run.frame).toMatchObject({ x: 10, width: 11 });
+    expect(runOf(japanese, "う").run.frame.x).toBe(0);
+    // 1 列ぶんの幅に 1 文字（何も表示されなかった）
+    const alone = lay("あ", largeJapanese, { width: 10 });
+    expect(shown(alone)).toBe("あ");
+    expect(runOf(alone, "あ").run.frame.x).toBe(0);
+    // 収めるための縮小もしない（0.89 倍に縮小していた）
+    const shrink = { ...wideEmoji, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 };
+    expect(lay("😀あ", shrink, { height: 10, width: 20 }).adjustFontScale).toBe(1);
+    // 列の箱が収まらない幅（19.9px）では、今までどおりその列から後ろを隠す。省略記号を置く 1 列目の箱は、領域の右端にそろう
+    const narrow = lay("😀あ", wideEmoji, { height: 10, width: 19.9 });
+    expect(narrow.isTruncated).toBe(true);
+    expect(shown(narrow)).toBe("…");
+    expect(runOf(narrow, "😀").run.frame.x).toBeCloseTo(9.9);
+    // 1em より広い縦中横（10.45px）が左端の列にあっても、どちらの列も箱で見る（「😀…」になった）
+    const mixed = lay("😀12", { ...wideEmoji, dividesByWords: true }, { height: 10, width: 20 });
+    expect(shown(mixed)).toBe("😀12");
+    expect(runOf(mixed, "😀").run.frame.x).toBe(10);
+    expect(runOf(mixed, "1").run.frame.x).toBeCloseTo(-0.225);
+  });
+
+  it("still shows a column whose characters fit when its 1em box does not, keeping the characters inside the area", () => {
+    // 幅 18px は、列の箱の並び（20px）には足りないが、矩形までの並び（15.5px）は収まる。今までどおり 2 列とも表示する。
+    // 列の箱を領域の右端に合わせると「あ」の列が左に 2px 出るので、収まるところまで戻す（「ｱ」の列の箱の空きが、右に 2px 出る）
+    for (const directionAlign of ["start", "middle", "end"] as const) {
+      const ctx = lay("ｱあ", { ...options, directionAlign }, { height: 10, width: 18 });
+      expect(ctx.isTruncated).toBe(false);
+      expect(shown(ctx)).toBe("ｱあ");
+      expect(runOf(ctx, "あ").run.frame.x).toBeCloseTo(0);
+      expect(runOf(ctx, "ｱ").run.frame.x).toBeCloseTo(10);
+    }
+    // 矩形がちょうど収まる幅（15.5px）でも表示する
+    expect(shown(lay("ｱあ", options, { height: 10, width: 15.5 }))).toBe("ｱあ");
+    // 1 列だけでも、文字が収まる幅（6px）なら表示して、領域の左端に置く
+    const alone = lay("ｱ", options, { width: 6 });
+    expect(shown(alone)).toBe("ｱ");
+    expect(runOf(alone, "ｱ").run.frame.x).toBeCloseTo(0);
+    // 収めるための縮小もしない
+    const shrink = { ...options, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 };
+    expect(lay("ｱあ", shrink, { height: 10, width: 18 }).adjustFontScale).toBe(1);
+    // 矩形も収まらない幅（15.4px）では、今までどおりその列から後ろを隠す。省略記号（1em）を置く 1 列目の箱は、領域の右端にそろう
+    // （矩形を右端に合わせていたので、省略記号が領域の右に 4.5px 出ていた）
+    const narrow = lay("ｱあ", options, { height: 10, width: 15.4 });
+    expect(narrow.isTruncated).toBe(true);
+    expect(shown(narrow)).toBe("…");
+    expect(runOf(narrow, "あ").run.visibility).toBe("invisible");
+    expect(runOf(narrow, "ｱ").run.frame.x).toBeCloseTo(5.4);
+    expect(lay("ｱ", options, { width: 5 }).isTruncated).toBe(true);
+  });
+
+  it("leaves a column alone when a newline, a full-width character or a rotated run already spans its 1em box", () => {
+    // 改行で終わる列は、改行の run の矩形が列の箱（幅 1em）になっている
+    const newline = lay("ｱ\nあい", options, { width: 20 });
+    expect(newline.renderedSize.width).toBe(20);
+    expect(runOf(newline, "ｱ").run.frame.x).toBe(10);
+    expect(runOf(newline, "あ").run.frame.x).toBe(0);
+    // 改行で区切った半角カナ。最後の列は改行の run が無いが、矩形の左端が列の左端なので、左端の列では位置が変わらない
+    const list = lay("ｱ\nｲ\nｳ", options);
+    expect(list.renderedSize.width).toBe(30);
+    expect(runOf(list, "ｱ").run.frame.x).toBe(20);
+    expect(runOf(list, "ｳ").run.frame.x).toBe(0);
+    // 左端や真ん中の列にあるとき
+    const left = lay("あｱ", options, { height: 10, width: 20 });
+    expect(runOf(left, "あ").run.frame.x).toBe(10);
+    expect(runOf(left, "ｱ").run.frame.x).toBe(0);
+    const inner = lay("あｱい", options, { height: 10, width: 30 });
+    expect(inner.runs.map((run) => run.frame.x)).toEqual([20, 10, 0]);
+    // 1em より広い文字が左端の列にあるとき（矩形は、右の列の箱に 2.4px 重なる）
+    const wideLeft = lay("あ😀", wideEmoji, { height: 10, width: 20 });
+    expect(wideLeft.isTruncated).toBe(false);
+    expect(runOf(wideLeft, "あ").run.frame.x).toBe(10);
+    expect(runOf(wideLeft, "😀").run.frame).toMatchObject({ x: 0, width: 12.4 });
+    expect(lay("あ😀", wideEmoji, { height: 10 }).renderedSize.width).toBe(20);
+    // 回転する欧文と同じ列
+    const rotated = lay("aｱ", options, { width: 10 });
+    expect(rotated.runs.map((run) => run.frame.x)).toEqual([0, 0]);
+    expect(rotated.renderedSize.width).toBe(10);
+  });
+
+  it("does not move anything, not even by a rounding error, when the characters share their column with full-width ones", () => {
+    // 半角カナや絵文字が全角の文字と同じ列にあれば、列の端は今までどおり全角の文字の矩形で決まる。全角の文字に置き換えたテキストと、
+    // どの文字の位置も renderedSize も、1 ビットも違わないことを確かめる
+    for (const style of [options, wideEmoji, smallEmoji]) {
+      for (const fontSize of [10, 13.5, 16, 17]) {
+        for (const lineHeightScale of [1, 1.2, 1.7]) {
+          for (const directionAlign of ["start", "middle", "end"] as const) {
+            for (const width of [undefined, 200]) {
+              const settings = { ...style, fontSize, lineHeightScale, directionAlign };
+              const ctx = lay("ｱ月\n晴れ😀\nあｱい\n月😀", settings, { width });
+              const reference = lay("字月\n晴れ字\nあ字い\n月字", settings, { width });
+              expect(ctx.renderedSize.width).toBe(reference.renderedSize.width);
+              expect(ctx.runs.map((run) => run.frame.x)).toEqual(reference.runs.map((run) => run.frame.x));
+            }
+          }
+        }
+      }
+    }
   });
 });

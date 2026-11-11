@@ -35,6 +35,32 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
   足らず）のために最後の列が隠れた。「12」だけを 1 列ぶんの幅に組むと、何も表示されなかった。元実装も数字のはみ出しを含む矩形で
   寄せるので、右端の列に 2 桁の縦中横があると左端の列が領域から出る。領域と重なる run は表示するので列ごとは隠れないが、
   その列の文字がほぼ省略記号になる。）
+- 縦書きの列を寄せる位置と renderedSize の幅は、1em より狭い縦中横（1 桁の数字。既定のフォントで約 0.53em）を列の 1em の箱として
+  決める（alignSpanTbRl）。数字は列の中央に寄せるので、矩形（数字の送り幅）の両側に同じだけ空きがある。数字だけの列（改行の run も
+  ほかの文字も無い列）が右端か左端にあっても、列の箱を領域の端に合わせ、幅を決めない領域では renderedSize の幅を列の箱の並びの幅にする。
+  列が領域の幅に収まるかどうかは、今までどおり数字の矩形で見る（columnSpanTbRl）。列の箱が幅に足りなくても、数字が収まっていれば
+  表示し、そのときは数字が収まるところまで列を戻す（箱の空きが領域の外に出る。表示される文字は、矩形だけで見たときと変わらない）。
+  行の先頭位置（firstRunFrame）が使う「寄せた量」も、いちばん左の列が数字だけなら、列の箱の左端で求める（context.ts の lineShift）。
+  （矩形だけで見ると、列の端が数字の幅で決まる。「7あ」を 1 文字ぶんの高さ・2 列ちょうどの幅に組むと、「7」が領域の右端に付いて
+  「あ」の列が約 0.24em 右にずれ、「あ7」を幅を決めずに組むと、renderedSize の幅が 2 列ぶんより約 0.24em 狭くなった。元実装は、
+  列を寄せたあとで縦中横を中央に寄せるので、右端の列が 1 桁の縦中横だけだと、どの列も約 0.48em 右にずれ、その数字は右の
+  約 0.24em が領域から出る。）
+- 縦書きの正立の文字（和文・絵文字）は、矩形の幅（横書きの送り幅）が 1em でなくても、列の 1em の箱（矩形の左端から 1em）で列を寄せる
+  （alignSpanTbRl）。矩形の幅が 1em でないのは、半角カナ（0.5em）、送り幅が 1em でない絵文字（Apple Color Emoji は 24px 未満で
+  1.1〜1.3em。既定の 17px で約 1.24em）、スケールを 1 以外にした和文・絵文字。右端の列がこういう文字だけ（改行の run も、全角の文字も、
+  回転する欧文も無い列）でも、列の箱を領域の端に合わせ、幅を決めない領域では renderedSize の幅を列の箱の並びの幅にする。
+  行の先頭位置（firstRunFrame）も列の箱の位置になる（正立の文字の矩形の左端は列の箱の左端なので、context.ts の lineShift はそのまま）。
+  列が領域の幅に収まるかどうかは、矩形と箱の重なりで見る（columnSpanTbRl）。1em より狭い文字は今までどおり矩形で見て、列の箱が幅に
+  足りなくても矩形が収まっていれば表示する（そのときは矩形が収まるところまで列を戻す。表示される文字は、矩形だけで見たときと変わらない）。
+  1em より広い文字は列の箱で見て、箱の右にはみ出す送り幅は、列の幅にも、列を寄せる位置にも数えない。
+  描く位置と矩形は変えない（文字は列の左端から描く）。実フォントでは、半角カナは vrt2 の横倒しの字形が列の幅いっぱいに描かれ
+  （vert を使わない WebKit では、正立のまま列の左半分）、小さいサイズの絵文字は字面が列の箱の中央に来て、広いぶんは右側の空きに
+  なるので、縦中横のように送り幅で列の中央に寄せると、かえってずれる。スケールを 1 より大きくした文字は、字面が箱の右にはみ出すので、
+  右端の列では領域の右に出ることがある。
+  （矩形で見ると、列の端が送り幅で決まる。「ｱあ」を 1 文字ぶんの高さ・2 列ちょうどの幅に組むと、「ｱ」の矩形が領域の右端に付いて
+  どの列も約 0.5em 右にずれ（「ｱ」の列の箱が領域の右に出る）、「ｶﾅ」だけを幅を決めずに組むと renderedSize の幅が 0.5em になった。
+  1em より広い文字では逆に列が左にずれ、幅が列数ちょうどの領域では最後の列が隠れた（17px の「😀と書く」を 2 文字ぶんの高さ・
+  2 列ちょうどの幅に組むと「😀︙」になった）。元実装も run の矩形で列を寄せる。）
 - 省略記号が置き換える文字より大きくて領域からはみ出すときは、収まるまで同じ行の手前の文字も隠す（CSS の text-overflow: ellipsis と同じ）。
   横書きは置き換える run のフォントで「…」の送り幅を測り、縦書きは「︙」を 1em とする。行の最初の文字でも収まらなければそこに置く。
   （元実装は置き換えた文字の位置にそのまま描くため、半角の欧文などを省略記号にすると、行末で最大 0.5em ほど領域からはみ出して切れた。）
@@ -150,10 +176,17 @@ export class Layouter {
   private y = 0;
   private tmpX: number | null = null;
   /**
-   * 1em より広い縦中横のトークン ID と、その数字が列の 1em の箱から片側にはみ出す長さ（px）。
-   * applyTateChuYokoTbRl が中央に寄せるときに決め、columnSpanTbRl が使う。
+   * 幅が 1em でない縦中横のトークン ID と、その列の 1em の箱の左端（px）、数字の並びが箱より広いかどうか。
+   * applyTateChuYokoTbRl が中央に寄せるときに決め、shiftPositionTbRl が run と一緒に動かす。
+   * columnSpanTbRl（列が領域に収まるかどうか）と alignSpanTbRl（列を寄せる位置と renderedSize）が使う。
    */
-  private readonly tateChuYokoOverhang = new Map<number, number>();
+  private readonly tateChuYokoBoxes = new Map<number, { left: number; wide: boolean }>();
+  /**
+   * 縦書きで、矩形の幅（横書きの送り幅）が 1em でない正立の文字の run（縦中横の数字は除く）。半角カナ、送り幅が 1em でない絵文字、
+   * スケールを 1 以外にした和文・絵文字など。矩形は列の左端から送り幅ぶんなので、列の 1em の箱は「矩形の左端から 1em」。
+   * layoutRunTbRl が覚え、columnSpanTbRl（列が領域に収まるかどうか）と alignSpanTbRl（列を寄せる位置と renderedSize）が使う。
+   */
+  private readonly nonEmUprightRuns = new Set<Run>();
 
   /** コンテキストの runs を対象にレイアウタを作る。 */
   constructor(private readonly ctx: StoneContext) {}
@@ -349,6 +382,9 @@ export class Layouter {
     // 字間は行方向（高さ）に足す。縦中横の数字は横に並べるので、幅（数字の間）には足さず、どの数字の矩形もまとまりの後ろの字間を含む
     run.position = { x: this.x, y: posY };
     run.frame = { x: this.x, y: this.y, width: run.advance, height: this.spaced(runId, height) };
+    // 正立の文字の矩形の幅は、横書きの送り幅。1em でなければ覚えておき、列を寄せるときは列の 1em の箱で見る（描く位置と矩形は変えない。
+    // 縦中横の数字もここを通るが、中央に寄せる applyTateChuYokoTbRl が扱う）
+    if (Math.abs(run.advance - size) > EPS && !ctx.isTateChuYoko(run)) this.nonEmUprightRuns.add(run);
   }
 
   /** 方向に応じて run を配置する。 */
@@ -652,8 +688,8 @@ export class Layouter {
    * 行送り方向の寄せに使う長さ。先頭の行から順に、行送り方向の大きさ limit に収まる行までの長さを返す
    * （収まらない行は updateVisibility で隠すので寄せに含めない。先頭の行は収まらなくても含める）。
    * extent(run) は先頭の行の始まりから run の終わりまでの行送り方向の長さ。
-   * measured を渡すと、収まるかどうかは extent で見て、返す長さは measured で測る（縦書きで、列の箱が収まる列までの、
-   * 縦中横の数字のはみ出しを含めた長さ。shiftPositionTbRl）。
+   * measured を渡すと、収まるかどうかは extent で見て、返す長さは measured で測る（縦書きで、幅に収まる列までの、
+   * 列を寄せる位置を決める範囲で測った長さ。shiftPositionTbRl）。
    */
   private fittingExtent(
     extent: (run: Run) => number,
@@ -717,8 +753,10 @@ export class Layouter {
     const minX = horizontal ? lead : 0;
     const minY = horizontal ? 0 : lead;
 
-    // 縦書きで 1em より広い縦中横があるときは、列の幅を列の 1em の箱で見る（箱が収まっていれば、はみ出した数字ごと表示する）
-    const boxed = !horizontal && this.tateChuYokoOverhang.size > 0;
+    // 縦書きで、列の 1em の箱と矩形の範囲が違う run（幅が 1em でない縦中横か正立の文字）があるときは、列の幅を columnSpanTbRl で見る
+    // （1em より広いものは列の 1em の箱。箱が収まっていれば、はみ出した分ごと表示する。1em より狭いものは矩形のままなので、
+    // 列の箱が領域から出ていても表示する）
+    const boxed = !horizontal && this.hasColumnBoxes;
     const contains = (run: Run): boolean => {
       const f = run.frame;
       let left = f.x;
@@ -865,9 +903,12 @@ export class Layouter {
 
   /**
    * 縦書きの列を、行送り方向（x）に寄せる。
-   * 寄せる位置は run の矩形で決める（1em より広い縦中横の数字が列の箱からはみ出す分も、領域に収まるように寄せる）。
-   * 列が幅に収まるかどうかは、列の 1em の箱で見る。はみ出しまで領域に収めると列の箱が領域から出るとき
-   *（幅が列数ちょうどで、右端か左端の列に 2 桁の縦中横があるときなど）は、箱が収まるところまで戻して、数字を領域の外にはみ出させる。
+   * 寄せる位置は、列の 1em の箱（alignSpanTbRl）で決める。正立の文字は、矩形の幅（横書きの送り幅）が 1em より狭くても広くても
+   * （半角カナ、送り幅が 1em でない絵文字、スケールを変えた和文など）、列の箱で寄せる。縦中横は、1em より狭い（1 桁の数字など）なら
+   * 列の箱で寄せ、1em より広いなら、数字が列の箱の両側にはみ出す分も領域に収まるように寄せる。
+   * 列が幅に収まるかどうかは、矩形と箱の重なり（columnSpanTbRl。1em より広いものは列の箱、狭いものは矩形）で見る。寄せる範囲まで
+   * 領域に収めると重なりが領域から出るとき（幅が列数ちょうどで、端の列に 2 桁の縦中横があるとき。列の箱が幅に足りず、端の列が
+   * 1em より狭い文字だけのとき）は、重なりが収まるところまで戻す（広い数字は領域の外にはみ出し、狭い文字の列は箱の空きが領域の外に出る）。
    */
   private shiftPositionTbRl(): void {
     const ctx = this.ctx;
@@ -877,16 +918,17 @@ export class Layouter {
     let minX = Infinity;
     let maxX = -Infinity;
     for (const run of runs) {
-      minX = Math.min(minX, run.frame.x);
-      maxX = Math.max(maxX, run.frame.x + run.frame.width);
+      const span = this.alignSpanTbRl(run);
+      minX = Math.min(minX, span.left);
+      maxX = Math.max(maxX, span.right);
     }
     if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return;
 
     const W = ctx.renderSize.width;
-    // 右端から run の左端までの長さ（run の矩形で測る。数字のはみ出しを含む）
-    const extent = (run: Run): number => maxX - run.frame.x;
-    // 1em より広い縦中横があれば、列の箱（数字のはみ出しを除いた範囲）で測った長さも使う
-    const boxed = Number.isFinite(W) && this.tateChuYokoOverhang.size > 0;
+    // 右端から run の左端までの長さ（列を寄せる位置を決める範囲で測る。広い縦中横の数字のはみ出しと、狭い文字の列の箱を含む）
+    const extent = (run: Run): number => maxX - this.alignSpanTbRl(run).left;
+    // 列の箱と矩形の範囲が違う run があれば、列が収まるかどうかを見る範囲（広い文字のはみ出しと、狭い文字の列の箱の空きを除く）で測った長さも使う
+    const boxed = Number.isFinite(W) && this.hasColumnBoxes;
     let columnMaxX = maxX;
     if (boxed) {
       columnMaxX = -Infinity;
@@ -910,7 +952,7 @@ export class Layouter {
     }
 
     if (boxed) {
-      // 幅に収まる列の箱が、領域から出ないようにする（出るのは数字のはみ出しだけにする）
+      // 幅に収まる列は、収まるかどうかを見た範囲が領域から出ないようにする（出るのは、広い文字のはみ出しと、狭い文字の列の箱の空きだけにする）
       const columnMinX = columnMaxX - this.fittingExtent(columnExtent, W);
       const lower = -columnMinX;
       const upper = W - columnMaxX;
@@ -923,39 +965,76 @@ export class Layouter {
     for (const run of runs) {
       moveRun(run, dx, 0);
     }
+    // 覚えておいた列の箱も、run と同じだけ動かす
+    for (const box of this.tateChuYokoBoxes.values()) box.left += dx;
   }
 
   /**
-   * 縦中横の数字を列の中央に寄せる。1em より広い縦中横は、列の 1em の箱から両側に同じ長さだけはみ出すので、その長さを覚えておく
-   *（列が領域に収まるかどうかは、はみ出しを除いて見る。columnSpanTbRl）。
+   * 縦中横の数字を列の中央に寄せる。数字の並びの幅が 1em でないときは、列の 1em の箱の左端を覚えておく。1em より広い縦中横は箱の両側に
+   * 同じ長さだけはみ出し、1em より狭い縦中横は箱の両側が同じ長さだけ空く（列が領域に収まるかどうかは、はみ出しを除いて見る。
+   * 列を寄せる位置と renderedSize は、空きも含めて決める。columnSpanTbRl / alignSpanTbRl）。
    */
   private applyTateChuYokoTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
-    this.tateChuYokoOverhang.clear();
+    this.tateChuYokoBoxes.clear();
     for (let tokenId = 0; tokenId < ctx.tokens.length; tokenId++) {
       const token = ctx.tokens[tokenId];
       if (!ctx.isTateChuYokoToken(token)) continue;
       let total = 0;
       for (let i = token.start; i < token.end; i++) total += runs[i].advance;
       const dx = (ctx.adjustFontSize - total) * 0.5;
+      // 列の箱の左端は、中央に寄せる前の最初の数字の左端（同じ列のほかの run の矩形の左端と、ちょうど同じ値）。
+      // 寄せた後の矩形から求め直すと丸め誤差が出て、数字と文字が同じ列にあるだけで renderedSize がわずかに変わってしまう
+      if (Math.abs(dx) > EPS) this.tateChuYokoBoxes.set(tokenId, { left: runs[token.start].frame.x, wide: dx < 0 });
       for (let i = token.start; i < token.end; i++) {
         moveRun(runs[i], dx, 0);
       }
-      if (dx < -EPS) this.tateChuYokoOverhang.set(tokenId, -dx);
     }
   }
 
   /**
-   * 縦書きで、run が列の並ぶ方向（x）に占める範囲。列を領域に収めるときと、領域に収まっているかどうかを見るときに使う。
-   * ふつうは run の矩形の左右。1em より広い縦中横の数字は、列の 1em の箱（数字のはみ出しを除いた範囲）にする。
+   * 縦書きで、run が列の並ぶ方向（x）に占める範囲のうち、領域に収まっていなければならない部分（run の矩形と列の 1em の箱の重なり）。
+   * 列が幅に収まるかどうかと、領域に収まっているかどうかを見るときに使う。
+   * ふつうは run の矩形の左右。1em より広い縦中横の数字と、矩形が 1em より広い正立の文字は、列の 1em の箱（はみ出しを除いた範囲）にする。
+   * 1em より狭い縦中横の数字と、矩形が 1em より狭い正立の文字は、矩形のまま（列の箱が幅に足りなくても、矩形が収まっていれば表示する）。
    */
   private columnSpanTbRl(run: Run): { left: number; right: number } {
-    const overhang = this.tateChuYokoOverhang.get(run.tokenId);
-    if (overhang === undefined) return { left: run.frame.x, right: run.frame.x + run.frame.width };
-    const ctx = this.ctx;
-    const left = ctx.runs[ctx.tokens[run.tokenId].start].frame.x + overhang;
-    return { left, right: left + ctx.adjustFontSize };
+    const f = run.frame;
+    const box = this.tateChuYokoBoxes.get(run.tokenId);
+    if (box !== undefined) {
+      return box.wide ? { left: box.left, right: box.left + this.ctx.adjustFontSize } : { left: f.x, right: f.x + f.width };
+    }
+    // 矩形が 1em より広い正立の文字は、列の箱まで。幅を先に見て、ふつうの run（幅が 1em ちょうど）では集合を引かない
+    const em = this.ctx.adjustFontSize;
+    if (f.width > em && this.nonEmUprightRuns.has(run)) return { left: f.x, right: f.x + em };
+    return { left: f.x, right: f.x + f.width };
+  }
+
+  /**
+   * 縦書きで、列を寄せる位置と renderedSize を決めるときに、run が列の並ぶ方向（x）に占める範囲。
+   * ふつうは run の矩形の左右（回転する欧文・改行・全角の文字の矩形は、列の 1em の箱と同じ）。
+   * - 矩形の幅（横書きの送り幅）が 1em でない正立の文字は、列の 1em の箱（矩形の左端から 1em）にする。矩形で見ると、右端の列が
+   *   こういう文字だけのとき、列の端が送り幅で決まってしまう。1em より広い文字の、箱の右にはみ出す送り幅は数えない（字面があるとは
+   *   限らない。Apple Color Emoji の小さいサイズでは、字面は列の箱の中にあり、広いぶんは右側の空き）。
+   * - 1em より狭い縦中横の数字は、列の 1em の箱にする（矩形は、列の中央に寄せた数字の幅しか無い）。
+   * - 1em より広い縦中横の数字は、数字のはみ出しを含む矩形のまま（列の中央に寄せた数字の字面が、箱の両側にはみ出す）。
+   */
+  private alignSpanTbRl(run: Run): { left: number; right: number } {
+    const f = run.frame;
+    const box = this.tateChuYokoBoxes.get(run.tokenId);
+    if (box !== undefined) {
+      return box.wide ? { left: f.x, right: f.x + f.width } : { left: box.left, right: box.left + this.ctx.adjustFontSize };
+    }
+    // 矩形の幅が 1em でない正立の文字は、列の箱。幅を先に見て、ふつうの run（幅が 1em ちょうど）では集合を引かない
+    const em = this.ctx.adjustFontSize;
+    if (f.width !== em && this.nonEmUprightRuns.has(run)) return { left: f.x, right: f.x + em };
+    return { left: f.x, right: f.x + f.width };
+  }
+
+  /** 縦書きで、列の 1em の箱と矩形の範囲が違う run（幅が 1em でない縦中横か、幅が 1em でない正立の文字）があるかどうか。 */
+  private get hasColumnBoxes(): boolean {
+    return this.tateChuYokoBoxes.size > 0 || this.nonEmUprightRuns.size > 0;
   }
 
   /** 縦書きの 1 列を textAlign に応じて寄せる。 */
@@ -1018,7 +1097,7 @@ export class Layouter {
     }
   }
 
-  /** 縦書きの描画サイズを更新する。 */
+  /** 縦書きの描画サイズを更新する。幅は、列を寄せる位置を決める範囲（矩形が 1em でない正立の文字と、1em より狭い縦中横は、列の 1em の箱）で測る。 */
   private updateRenderedSizeTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -1035,8 +1114,9 @@ export class Layouter {
         indent = this.indentOfLine(i);
         lineTop = run.frame.y - indent;
       }
-      minX = Math.min(minX, run.frame.x);
-      maxX = Math.max(maxX, run.frame.x + run.frame.width);
+      const span = this.alignSpanTbRl(run);
+      minX = Math.min(minX, span.left);
+      maxX = Math.max(maxX, span.right);
       minY = Math.min(minY, indent === 0 ? run.frame.y : lineTop);
       maxY = Math.max(maxY, run.frame.y + run.frame.height);
     }
@@ -1048,7 +1128,8 @@ export class Layouter {
 
   /** 縦書きの後処理。 */
   private postLayoutTbRl(): void {
-    // 縦中横の中央寄せは寄せより前に行う（1em より広い縦中横のはみ出しも含めて寄せる。列の箱が領域から出るときだけ、箱を収める）
+    // 縦中横の中央寄せは寄せより前に行う（1em より広い縦中横のはみ出しも、1em より狭い縦中横の列の箱も含めて寄せる）。
+    // 正立の文字は、矩形の幅が 1em でなくても動かさない（列の左端から描く）。列を寄せるときにだけ、列の 1em の箱で見る
     this.applyTateChuYokoTbRl();
     this.shiftPositionTbRl();
     this.forEachLine((start, end) => this.alignLineTbRl(start, end));
@@ -1075,6 +1156,7 @@ export class Layouter {
     this.tmpX = null;
     this.runId = 0;
     this.lineStartRunId = 0;
+    this.nonEmUprightRuns.clear();
     // テキストの先頭の行は、字下げから始める
     if (ctx.direction === "lrTb") this.x = this.indentOfLine(0);
     else this.y = this.indentOfLine(0);

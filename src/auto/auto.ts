@@ -874,6 +874,13 @@ class AutoStone implements AutoStoneHandle {
     if (block.typeset && key === block.layoutKey) return;
 
     const ctx = layoutText(block.source.text, block.resolved, this.measurer, size, block.source.spans);
+    // エンジンは領域に入りきらない文字を隠す（切り詰める）が、CSS は隠さずにはみ出させる。そのまま描くと文字が消えるので、
+    // 組まずに元の表示に戻す（1 文字も入らない幅、幅より大きい字下げなど）。フロートと同じく、中身が変わるまで調べ直さない
+    if (ctx.isTruncated) {
+      this.release(block);
+      this.skip(host, "truncated");
+      return;
+    }
     parts.canvas.innerHTML = svgString(ctx, { spans: block.source.spans });
     // リンクのキーボード操作は元の <a> が受けるので、SVG のリンクは Tab の順序から外す
     for (const link of parts.canvas.querySelectorAll("a")) link.setAttribute("tabindex", "-1");

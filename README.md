@@ -215,6 +215,7 @@ import "@non-standardworld/stone-engine.js/auto";
 - 段落の中の一部の要素だけ `letter-spacing` を変えているもの、`text-indent` をパーセントで指定しているものと `hanging` を付けているもの（`letter-spacing` と `text-indent` は、段落全体に px や em で指定したものを組みます）
 - 下線・打ち消し線の種類（点線や波線）、太さ、下線の位置（`text-underline-offset`）を指定しているもの、上線を引いているもの（エンジンは実線を、自分で決めた太さと位置に描くため）
 - フロートが回り込んでいるもの
+- 1 文字も入らないほど幅の狭いもの、幅より大きい `text-indent` を指定しているものなど、組むと文字が入りきらないもの（エンジンは入りきらない文字を隠しますが、CSS は隠さずにはみ出させるので、文字が消えないように元の表示のまま残します。その後で幅が広がっても、中身が変わるか `refresh()` を呼ぶまでは組み直しません）
 - `li`、`td`、`dd`、`figcaption` など、Shadow DOM を付けられない要素（既定の対象に含めていません。中に `<p>` があれば、その `<p>` は組まれます）
 
 `<html data-stone-debug>` を付けると、組んだ要素に `data-stone-state="typeset"`、見送った要素に `data-stone-state="skipped"` と理由（`data-stone-reason`）が付きます。

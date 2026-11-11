@@ -29,6 +29,10 @@ export function Playground() {
   const [direction, setDirection] = useState<Direction>("lrTb");
   const [fontSize, setFontSize] = useState(20);
   const [lineHeightScale, setLineHeightScale] = useState(1.8);
+  const [letterSpacing, setLetterSpacing] = useState(0);
+  // 字下げは em で選び、px にして渡す（フォントサイズを変えても 1 字ぶんのままにするため）
+  const [indentEm, setIndentEm] = useState(0);
+  const [indentEachLine, setIndentEachLine] = useState(true);
   const [textAlign, setTextAlign] = useState<TextAlign>("leading");
   const [directionAlign, setDirectionAlign] = useState<DirectionAlign>("start");
   const [punctuationMode, setPunctuationMode] = useState<PunctuationMode>("stone");
@@ -136,6 +140,21 @@ export function Playground() {
           />
         </label>
         <label>
+          字間 <span className="value">{letterSpacing}px</span>
+          <input
+            type="range"
+            min={-2}
+            max={12}
+            step={0.5}
+            value={letterSpacing}
+            onChange={(e) => setLetterSpacing(Number(e.target.value))}
+          />
+        </label>
+        <label>
+          1 行目の字下げ <span className="value">{indentEm}字</span>
+          <input type="range" min={0} max={3} step={0.5} value={indentEm} onChange={(e) => setIndentEm(Number(e.target.value))} />
+        </label>
+        <label>
           和文フォント
           <select value={jpFont} onChange={(e) => setJpFont(e.target.value)}>
             {JP_FONTS.map((f) => (
@@ -185,6 +204,10 @@ export function Playground() {
           縦中横
         </label>
         <label className="inline">
+          <input type="checkbox" checked={indentEachLine} onChange={(e) => setIndentEachLine(e.target.checked)} />
+          改行の直後の行も字下げする
+        </label>
+        <label className="inline">
           <input type="checkbox" checked={showFrames} onChange={(e) => setShowFrames(e.target.checked)} />
           文字の枠を表示
         </label>
@@ -197,6 +220,9 @@ export function Playground() {
             direction={direction}
             fontSize={fontSize}
             lineHeightScale={lineHeightScale}
+            letterSpacing={letterSpacing}
+            textIndent={indentEm * fontSize}
+            textIndentEachLine={indentEachLine}
             textAlign={textAlign}
             directionAlign={directionAlign}
             punctuationMode={punctuationMode}

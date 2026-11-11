@@ -38,6 +38,7 @@ import {
   glyphParagraphs,
   isSafeHref,
   nestGlyphGroups,
+  SVG_TEXT_STYLE,
   svgOverflow,
   svgSize,
   type GlyphGroup,
@@ -293,10 +294,8 @@ export function StoneSVG({
         display: "block",
         overflow: svgOverflow(layout),
         fill: color,
-        fontVariantLigatures: "none",
-        fontKerning: "none",
-        // 縦書きの要素の中に置かれても、SVG のテキストが縦に並ばないようにする（render/svg.ts の冒頭のコメント）
-        writingMode: "horizontal-tb",
+        // ページ側の指定が SVG のテキストに届いて、文字の位置・向き・字形が変わらないようにする（render/svg.ts の冒頭のコメント）
+        ...SVG_TEXT_STYLE,
         ...style,
       }}
       onCopy={handleCopy}

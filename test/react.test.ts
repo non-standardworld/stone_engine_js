@@ -43,8 +43,8 @@ function expectSameSvg(ctx: StoneContext, showFrames = false, spans?: StoneSpan[
   for (const attr of ["width", "height", "viewBox"]) {
     expect(fromReact.match(new RegExp(` ${attr}="([^"]*)"`))?.[1]).toBe(fromString.match(new RegExp(` ${attr}="([^"]*)"`))?.[1]);
   }
-  // writing-mode: horizontal-tb（縦書きの要素の中でも SVG のテキストを縦に並べさせない）などが、どちらにも付いている
-  expect(rootStyle(fromReact)).toContain("writing-mode:horizontal-tb");
+  // ページから継承される指定を戻す宣言（writing-mode: horizontal-tb、direction: ltr など）が、どちらにも同じように付いている
+  expect(rootStyle(fromReact)).toEqual(expect.arrayContaining(["writing-mode:horizontal-tb", "direction:ltr", "font-feature-settings:normal"]));
   expect(rootStyle(fromReact)).toEqual(rootStyle(fromString));
   expect(contents(fromReact)).toEqual(contents(fromString));
 }
@@ -90,6 +90,17 @@ describe("StoneSVG", () => {
     ];
     expectSameSvg(lay("普通太字 Bold です", {}, { width: 60 }, spans), false, spans);
     expectSameSvg(lay("普通太字 Bold です", { direction: "tbRl" }, { height: 60 }, spans), false, spans);
+  });
+
+  it("lets the style prop override the text properties that the root resets", () => {
+    // ルートは、ページから継承される font-variant-* などを既定値に戻す。使いたいものは style で指定し直せる（後ろに出力されて勝つ）
+    const html = renderToStaticMarkup(
+      createElement(StoneSVG, { layout: lay("日本語 123"), style: { fontVariantNumeric: "tabular-nums", opacity: 0.5 } }),
+    );
+    const style = html.match(/^<svg [^>]* style="([^"]*)"/)?.[1] ?? "";
+    expect(style.indexOf("font-variant:none")).toBeGreaterThanOrEqual(0);
+    expect(style.indexOf("font-variant-numeric:tabular-nums")).toBeGreaterThan(style.indexOf("font-variant:none"));
+    expect(rootStyle(html)).toEqual(expect.arrayContaining(["opacity:0.5", "writing-mode:horizontal-tb"]));
   });
 });
 

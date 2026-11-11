@@ -104,39 +104,6 @@ export const SPACING = `// 字下げ（px）は、テキストの先頭の行と
   {"字間を空けて組む。禁則や約物の詰めはそのまま働き、「……」の間は空けない。"}
 </StoneText>`;
 
-export const AUTO_DEMO = `// どこかで 1 回読み込む
-import "@non-standardworld/stone-engine.js/auto";
-
-// 組む範囲に data-stone を付ける。書体・大きさ・行送り・縦書きは CSS のまま（<StoneText> は使わない）
-<article data-stone style={{ writingMode: "vertical-rl", height: 300 }}>
-  <h4>ふつうのHTMLを組む</h4>
-  <p>
-    この記事は、ふつうの見出しと段落です。<a href="#auto">オートモード</a>は、
-    CSSで決まった書体や行送りを読み取って、<strong>同じ見た目のまま</strong>組み直します。
-  </p>
-  <p>12月31日の「大晦日」まで、あと30日。……</p>
-</article>`;
-
-export const AUTO_IMPORT = `import "@non-standardworld/stone-engine.js/auto";`;
-
-export const AUTO_HTML = `<article data-stone>
-  <h1>見出し</h1>
-  <p>段落の中の<a href="/about">リンク</a>や<strong>太字</strong>も、そのまま組まれます。</p>
-</article>`;
-
-export const AUTO_CONFIG = `import { autoStone } from "@non-standardworld/stone-engine.js";
-
-const auto = autoStone({
-  scope: "article", // この中を組む（既定は "[data-stone]"）
-  targets: "p, h2, h3", // 組む要素（既定は p / h1〜h6 / blockquote）
-  // CSS から読み取った設定に重ねる
-  options: { punctuationMode: "half", fonts: { latin: { scale: 0.95 } } },
-});
-
-auto.report(); // 見つけた要素と状態（typeset、skipped と理由、queued、waiting）
-auto.refresh(); // クラスの切り替えなど、CSS だけを変えたときに読み直す
-auto.destroy(); // やめて、元の表示に戻す`;
-
 export const CSS_RESET = `// React: svgProps で <svg> に付け直す
 <StoneText svgProps={{ style: { fontFeatureSettings: '"zero"' } }}>{text}</StoneText>
 

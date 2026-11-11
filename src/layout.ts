@@ -3,7 +3,17 @@ layout.ts — 行分割・禁則・約物処理・縦中横・文字寄せを行
 
 Swift 版との意図的な差異（いずれも元実装の明らかな不具合の修正）:
 - 禁則の追い出しは「行末 run を含むトークンの直前」まで戻す（元実装は 1 つ前の run のトークン長だけ戻すため単語が割れることがある）。
-- 行頭の「 などを半角にする処理は行末 run まで含めて位置をずらし、前行末との約物処理で既に半角になっている場合は二重に詰めない。
+- 行頭の「 などを半角にする処理（stone）は、行を閉じるとき（goNextLine）ではなく、run を置くとき（layoutRun）に行う。前行末との
+  約物処理で既に半角になっている場合は二重に詰めない（どちらも同じ半角）。改行で終わらない最後の行（1 行だけのテキストを含む）の
+  行頭も、ほかの行と同じく半角にする。折り返しの判定（次のトークン・次の文字が行に入るかどうか）は、置いたときと同じ約物の詰めを
+  含めた長さで見る（punctuationTrim。stone の行頭の始め括弧・約物の後ろの始め括弧・約物の前の終わり括弧と、half の約物）。
+  行末の句読点・終わり括弧を半角にする処理（stone）は、行を閉じるときに決まるので見積もりに含めない（今までどおり、全角で
+  入らなければ折り返す。改行の手前と最後の行の行末は半角にしないので、折り返さずに組んだ長さとは食い違わない）。
+  （元実装は、行頭の始め括弧を行を閉じるときに半角にして、行末 run の手前までを詰める。折り返しの判定は全角のまま見積もり、
+  閉じない最後の行は詰めなかった。half では約物をいつも半角に組むのに、折り返しの判定は全角で見積もった。このため、
+  折り返さずに組んだ長さ（renderedSize）の領域に組み直すと行が増えた。13px の「「いう」\nえ」は幅 45.5px（1 行目の 「 が半角）だが、
+  その幅に組むと「う」の後ろで折り返して 3 行になり、half の「あいう。」も幅 45.5px で、その幅では 2 行になった。オートモードでは、
+  幅が内容で決まる要素で、<br> の手前の最後の文字が次の行に送られた。同じ段落の行頭の 「 も、段落が折り返すかどうかで半角ずれた。）
 - 均等配置は frame 基準で並べ直す（元実装は行末が余り、行頭約物と重なることがあった）。
 - 均等配置の余白はトークン間ではなく文字間に配る（欧文の単語の途中と縦中横の途中は空けない）。行末の空白は幅 0 にして除く。
   （トークン間にだけ配ると、単語分割が有効なときに文節ごとの大きな空きになる。）
@@ -183,6 +193,37 @@ function halvesClosingBeforePunctuation(run: Run, next: Run | undefined): boolea
   );
 }
 
+/**
+ * 約物の詰め。字面を手前へずらす量（shift）と、行方向の長さ（字間を除く）に掛ける比（ratio）。
+ * どちらも全角の長さ（横書きは送り幅、縦書きは 1em）に対する割合。
+ */
+interface PunctuationTrim {
+  shift: number;
+  ratio: number;
+}
+
+const NO_TRIM: PunctuationTrim = { shift: 0, ratio: 1 };
+/** 終わり括弧・句読点の半角（後ろ半分を詰める）。 */
+const TRIM_FIRST_HALF: PunctuationTrim = { shift: 0, ratio: 0.5 };
+/** 始め括弧の半角（前半分を詰める）。 */
+const TRIM_SECOND_HALF: PunctuationTrim = { shift: 0.5, ratio: 0.5 };
+/** 中点類の半角（前後を 1/4 ずつ詰める）。 */
+const TRIM_QUARTER: PunctuationTrim = { shift: 0.25, ratio: 0.5 };
+
+/** half モード: 約物をいつも半角にする。 */
+function halfTrim(run: Run): PunctuationTrim {
+  switch (run.punctuation) {
+    case "whole":
+      return NO_TRIM;
+    case "firstHalf":
+      return TRIM_FIRST_HALF;
+    case "secondHalf":
+      return TRIM_SECOND_HALF;
+    case "quarter":
+      return TRIM_QUARTER;
+  }
+}
+
 export class Layouter {
   private runId = 0;
   private lineStartRunId = 0;
@@ -229,27 +270,63 @@ export class Layouter {
   }
 
   /**
-   * 縦書きで run が列の中で占める長さ（字間を含む）。layoutRunTbRl が作る矩形の高さと同じ見積もりで、約物の詰めは見ない。
-   * 回転する欧文は送り幅、正立の文字（和文・絵文字・縦中横の数字）は 1em、改行は 0。
+   * 約物の詰め（punctuationMode）で、run をどれだけ詰めて置くか。run を置くとき（layoutRun）と、折り返しの判定で次の文字が占める
+   * 長さを見積もるとき（extentOfToken など）に、同じ規則を使う。見積もりが置いたときの長さとずれると、折り返さずに組んだ長さ
+   * （renderedSize）の領域に組み直したときに、行が増える。
+   * lineStart は、run が行の最初の文字かどうか（stone は、行頭の始め括弧を半角にする）。折り返しの判定で見積もる次の文字は、
+   * 今の行の後ろに置くので、行の最初の文字ではない。
+   */
+  private punctuationTrim(runId: number, lineStart: boolean): PunctuationTrim {
+    const ctx = this.ctx;
+    const runs = ctx.runs;
+    const run = runs[runId];
+    switch (ctx.punctuationMode) {
+      case "whole":
+        return NO_TRIM;
+      case "half":
+        return halfTrim(run);
+      case "stone":
+        if (run.punctuation === "secondHalf" && (lineStart || halvesOpeningAfterPunctuation(run, runs[runId - 1]))) {
+          return TRIM_SECOND_HALF;
+        }
+        if (halvesClosingBeforePunctuation(run, runs[runId + 1])) return TRIM_FIRST_HALF;
+        return NO_TRIM;
+    }
+  }
+
+  /**
+   * 横書きで run が行の中で占める長さ（字間を含む）。行の最初の文字でないときに layoutRunLrTb が作る矩形の幅と同じ見積もりで、
+   * 約物の詰めを含める（行末の約物を半角にする処理は、行を閉じるときに決まるので見ない）。改行は 0。
+   */
+  private inlineExtentOfRun(runId: number): number {
+    const run = this.ctx.runs[runId];
+    return this.spaced(runId, run.advance * this.punctuationTrim(runId, false).ratio);
+  }
+
+  /**
+   * 縦書きで run が列の中で占める長さ（字間を含む）。列の最初の文字でないときに layoutRunTbRl が作る矩形の高さと同じ見積もりで、
+   * 約物の詰めを含める（列末の約物を半角にする処理は、列を閉じるときに決まるので見ない）。
+   * 回転する欧文は送り幅、正立の文字（和文・絵文字・縦中横の数字）は 1em（約物を詰めるときはその半分）、改行は 0。
    */
   private columnExtentOfRun(runId: number): number {
     const ctx = this.ctx;
     const run = ctx.runs[runId];
     if (run.isNewline) return 0;
-    return this.spaced(runId, ctx.isClockwise(run) ? run.advance : ctx.adjustFontSize);
+    if (ctx.isClockwise(run)) return this.spaced(runId, run.advance);
+    return this.spaced(runId, ctx.adjustFontSize * this.punctuationTrim(runId, false).ratio);
   }
 
   /**
-   * トークン（run の範囲）が行の中で占める長さ（字間を含む）。折り返しの判定に使う（約物の詰めは見ない）。
+   * トークン（run の範囲）が行の中で占める長さ（字間を含む）。折り返しの判定に使う。約物の詰めは、置いたときと同じく含める
+   * （行末の約物を半角にする処理は見ない）。
    * 横書きは送り幅の合計。縦書きは、列の中で実際に占める長さ（columnExtentOfRun）の合計で、縦中横は横に並べた 1 つのまとまりとして
    * 1em（字間は後ろに 1 回だけ）。横書きの送り幅で見積もると、1 桁の縦中横や半角カナのように送り幅が 1em より狭い文字が、列からはみ出す。
    */
   private extentOfToken(token: Token): number {
     const ctx = this.ctx;
     if (ctx.direction === "lrTb") {
-      if (ctx.adjustLetterSpacing === 0) return ctx.advanceOfToken(token);
       let total = 0;
-      for (let i = token.start; i < token.end; i++) total += this.spaced(i, ctx.runs[i].advance);
+      for (let i = token.start; i < token.end; i++) total += this.inlineExtentOfRun(i);
       return total;
     }
     if (ctx.isTateChuYokoToken(token)) return this.columnExtentOfRun(token.end - 1);
@@ -294,45 +371,14 @@ export class Layouter {
       return;
     }
 
-    let posX = this.x;
-    let width = run.advance;
-    switch (ctx.punctuationMode) {
-      case "whole":
-        break;
-      case "half":
-        switch (run.punctuation) {
-          case "whole":
-            break;
-          case "firstHalf":
-            width = run.advance * 0.5;
-            break;
-          case "secondHalf":
-            posX = this.x - run.advance * 0.5;
-            width = run.advance * 0.5;
-            break;
-          case "quarter":
-            posX = this.x - run.advance * 0.25;
-            width = run.advance * 0.5;
-            break;
-        }
-        break;
-      case "stone":
-        if (halvesOpeningAfterPunctuation(run, runs[runId - 1])) {
-          posX = this.x - run.advance * 0.5;
-          width = run.advance * 0.5;
-        }
-        if (halvesClosingBeforePunctuation(run, runs[runId + 1])) {
-          width = run.advance * 0.5;
-        }
-        break;
-    }
-
-    // 約物の詰めは字間を含めない送り幅で決め、その後ろに字間を足す
-    run.position = { x: posX, y: this.y };
+    // 約物の詰めは字間を含めない送り幅で決め、その後ろに字間を足す。stone の行頭の始め括弧も、ここで半角にする
+    // （折り返しの判定が、詰めた後の長さで次の文字が入るかどうかを見るように）
+    const trim = this.punctuationTrim(runId, runId === this.lineStartRunId);
+    run.position = { x: this.x - run.advance * trim.shift, y: this.y };
     run.frame = {
       x: this.x,
       y: this.y - fm.ascent(run.fontId, size),
-      width: this.spaced(runId, width),
+      width: this.spaced(runId, run.advance * trim.ratio),
       height: size * fm.fontScale(run.fontId),
     };
   }
@@ -361,43 +407,14 @@ export class Layouter {
     }
 
     // 正立の文字のベースラインは、ますの下端からディセントだけ上。和文と絵文字のディセントは仮想ボディの比（fonts.ts。絵文字は
-    // フォントから測った値を使わない）なので、和文の仮想ボディも絵文字の絵の箱も、ますに重なる。縦中横の数字は欧文フォントの測った値
-    let posY = this.y + size - fm.descent(run.fontId, size);
-    let height = size;
-    switch (ctx.punctuationMode) {
-      case "whole":
-        break;
-      case "half":
-        switch (run.punctuation) {
-          case "whole":
-            break;
-          case "firstHalf":
-            height = size * 0.5;
-            break;
-          case "secondHalf":
-            posY -= size * 0.5;
-            height = size * 0.5;
-            break;
-          case "quarter":
-            posY -= size * 0.25;
-            height = size * 0.5;
-            break;
-        }
-        break;
-      case "stone":
-        if (halvesOpeningAfterPunctuation(run, runs[runId - 1])) {
-          posY -= size * 0.5;
-          height = size * 0.5;
-        }
-        if (halvesClosingBeforePunctuation(run, runs[runId + 1])) {
-          height = size * 0.5;
-        }
-        break;
-    }
+    // フォントから測った値を使わない）なので、和文の仮想ボディも絵文字の絵の箱も、ますに重なる。縦中横の数字は欧文フォントの測った値。
+    // 約物の詰めは横書きと同じ規則で、列の最初の始め括弧も、ここで半角にする
+    const trim = this.punctuationTrim(runId, runId === this.lineStartRunId);
+    const posY = this.y + size - fm.descent(run.fontId, size) - size * trim.shift;
 
     // 字間は行方向（高さ）に足す。縦中横の数字は横に並べるので、幅（数字の間）には足さず、どの数字の矩形もまとまりの後ろの字間を含む
     run.position = { x: this.x, y: posY };
-    run.frame = { x: this.x, y: this.y, width: run.advance, height: this.spaced(runId, height) };
+    run.frame = { x: this.x, y: this.y, width: run.advance, height: this.spaced(runId, size * trim.ratio) };
     // 正立の文字の矩形の幅は、横書きの送り幅。1em でなければ覚えておき、列を寄せるときは列の 1em の箱で見る（描く位置と矩形は変えない。
     // 縦中横の数字もここを通るが、中央に寄せる applyTateChuYokoTbRl が扱う）
     if (Math.abs(run.advance - size) > EPS && !ctx.isTateChuYoko(run)) this.nonEmUprightRuns.add(run);
@@ -416,25 +433,8 @@ export class Layouter {
   private goNextLineLrTb(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
+    // 行頭の始め括弧（stone）は、run を置くときに半角にしてある（layoutRunLrTb。字下げした行でも、字下げの後ろを行頭とする）
     if (ctx.punctuationMode === "stone") {
-      // 行頭の始め括弧を半角にして行全体を詰める（前行末との処理で既に半角なら何もしない）。
-      // 字下げした行でも、字下げの後ろを行頭として同じように詰める（字下げが 1em なら「 の字面が 1em の位置から始まる）
-      const start = this.lineStartRunId;
-      const first = runs[start];
-      if (
-        first &&
-        !first.isNewline &&
-        first.punctuation === "secondHalf" &&
-        first.frame.width >= this.spaced(start, first.advance) - EPS
-      ) {
-        const dx = first.advance * 0.5;
-        first.position = { x: first.position.x - dx, y: first.position.y };
-        first.frame = { ...first.frame, width: this.spaced(start, first.advance * 0.5) };
-        for (let i = start + 1; i <= this.runId && i < runs.length; i++) {
-          moveRun(runs[i], -dx, 0);
-        }
-      }
-
       // 行末の句読点・終わり括弧を半角にする
       const last = runs[this.runId];
       if (last && !last.isNewline && last.punctuation === "firstHalf") {
@@ -452,24 +452,8 @@ export class Layouter {
     const ctx = this.ctx;
     const runs = ctx.runs;
     const size = ctx.adjustFontSize;
+    // 列の最初の始め括弧（stone）は、run を置くときに半角にしてある（layoutRunTbRl）
     if (ctx.punctuationMode === "stone") {
-      // 横書きと同じく、字下げした列でも字下げの後ろを行頭として始め括弧を詰める
-      const start = this.lineStartRunId;
-      const first = runs[start];
-      if (
-        first &&
-        !first.isNewline &&
-        first.punctuation === "secondHalf" &&
-        first.frame.height >= this.spaced(start, size) - EPS
-      ) {
-        const dy = size * 0.5;
-        first.position = { x: first.position.x, y: first.position.y - dy };
-        first.frame = { ...first.frame, height: this.spaced(start, size * 0.5) };
-        for (let i = start + 1; i <= this.runId && i < runs.length; i++) {
-          moveRun(runs[i], 0, -dy);
-        }
-      }
-
       const last = runs[this.runId];
       if (last && !last.isNewline && last.punctuation === "firstHalf") {
         last.frame = { ...last.frame, height: this.spaced(this.runId, size * 0.5) };
@@ -510,7 +494,7 @@ export class Layouter {
       if (run.tokenId !== next.tokenId) {
         // 次のトークン全体が収まるか（字間は行末の文字の後ろのぶんも含めて見る。CSS と同じ）
         if (this.x + this.extentOfToken(ctx.tokens[next.tokenId]) > this.maxX) this.goNextLine();
-      } else if (this.x + this.spaced(this.runId + 1, next.advance) > this.maxX) {
+      } else if (this.x + this.inlineExtentOfRun(this.runId + 1) > this.maxX) {
         this.goNextLine();
       }
     }

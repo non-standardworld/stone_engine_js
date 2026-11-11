@@ -301,3 +301,51 @@ describe("line positions with a column that holds only a one-digit tate-chu-yoko
     }
   });
 });
+
+describe("line positions with a column of upright characters whose frame is not 1em wide", () => {
+  // 半角カナ（5.5px）や、送り幅が 1em でない絵文字（スケール 1.24 で 12.4px）だけの列が右端にあっても、列を寄せる位置と renderedSize は、
+  // 矩形ではなく列の 1em の箱で決まる（layout-tbrl.test.ts）。行の位置（firstRunFrame）も列の箱の位置になり、どの列を指しても、
+  // その列の文字が返る。正立の文字の矩形の左端は列の箱の左端なので、寄せた量（lineShift）は矩形の左端のままでよい
+  const wideEmoji = { direction: "tbRl", fonts: { emoji: { family: "", scale: 1.24 } } } as const;
+
+  it("returns the column boxes when the rightmost column holds only such characters", () => {
+    // 幅 40 に 2 列。列の箱は x = 30 と 20。矩形で寄せると、「ｱ」の矩形が領域の右端に付いて、列が 4.5px 右（34.5 と 24.5）にずれ、
+    // 行の位置（30 と 20）と食い違った
+    const right = lay("ｱあ", { direction: "tbRl" }, { height: 10, width: 40 });
+    expect(runOf(right, "ｱ").run.frame.x).toBe(30);
+    expect(runOf(right, "あ").run.frame.x).toBe(20);
+    expect(linePositions(right)).toEqual([30, 20]);
+    // 幅を決めないとき（寄せない）は、右端の列の箱が renderedSize の右端（renderedSize の幅が 15.5px で、行の位置が 5.5 と -4.5 になった）
+    const auto = lay("ｱあ", { direction: "tbRl" }, { height: 10 });
+    expect(linePositions(auto)).toEqual([10, 0]);
+    // 1em より広い文字: 箱の右にはみ出す送り幅（2.4px）のぶん、列が左（27.6 と 17.6）にずれ、行の位置と食い違った
+    const wide = lay("😀あ", wideEmoji, { height: 10, width: 40 });
+    expect(runOf(wide, "😀").run.frame.x).toBe(30);
+    expect(linePositions(wide)).toEqual([30, 20]);
+    // 幅を決めないときは、renderedSize の幅が 22.4px で、行の位置が 12.4 と 2.4 になった
+    expect(linePositions(lay("😀あ", wideEmoji, { height: 10 }))).toEqual([10, 0]);
+  });
+
+  it("puts every line where it would be if the characters were full-width", () => {
+    const cases = [
+      [{ direction: "tbRl" }, ["ｱあい", "あいｱ", "ｱあｲ", "あｱい", "ｱ"]],
+      [wideEmoji, ["😀あい", "あい😀", "😀あ😀", "あ😀い", "😀"]],
+    ] as const;
+    for (const [style, texts] of cases) {
+      for (const directionAlign of ["start", "middle", "end"] as const) {
+        for (const width of [undefined, 30, 40, 47.5]) {
+          for (const text of texts) {
+            const options: StoneOptions = { ...style, directionAlign };
+            const ctx = lay(text, options, { height: 10, width });
+            const reference = lay(text.replace(/[ｱ-ﾝ]|😀/gu, "字"), options, { height: 10, width });
+            const label = JSON.stringify({ text, directionAlign, width });
+            expect(linePositions(ctx), label).toEqual(linePositions(reference));
+            // 行の位置は、その列の文字の矩形の左端（列の箱の左端）
+            ctx.runs.forEach((run) => expect(run.frame.x, label).toBe(linePositions(ctx)[run.line]));
+            expect(misplacedHalves(ctx), label).toEqual([]);
+          }
+        }
+      }
+    }
+  });
+});

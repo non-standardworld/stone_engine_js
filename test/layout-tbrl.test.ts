@@ -209,6 +209,33 @@ describe("layout tbRl", () => {
     expect(runOf(stone, "い").run.frame.y).toBe(5);
   });
 
+  it("leaves only the first character of the column's first token when the push-out walks back to it", () => {
+    // 現状の挙動を固定するテスト（横書きと同じ。経緯は layout-lrtb.test.ts の同じ趣旨のテストを参照）。
+    // 追い出しが列の最初のトークンに届くと、その 1 文字目だけを列に残して改行する。まとまりのまま列に残すのは、縦中横だけ
+    const options = { direction: "tbRl", dividesByWords: true } as const;
+    // 3 桁の数字は回転する欧文で、縦中横ではない。123(15.675) + 々(10) = 25.675px で、「）」は入らない。追い出しは 123 まで戻って
+    // 「1」だけを列に残し、次の列でも同じことが起きるので、1 桁ずつの列になる
+    expect(lines(lay("123々）", options, { height: 27 }))).toEqual(["1", "2", "3々）"]);
+    // 欧文の単語と和文の単語も同じ
+    expect(lines(lay("English、」と", options, { height: 50 }))).toEqual(["E", "nglish、」", "と"]);
+    expect(lines(lay("東京。", options, { height: 20 }))).toEqual(["東", "京。"]);
+    // 行揃えが何であっても同じ分かれ方で、切り詰めにはならない
+    for (const textAlign of ["leading", "center", "trailing", "justify"] as const) {
+      const digits = lay("123々）", { ...options, textAlign }, { height: 27 });
+      expect(lines(digits)).toEqual(["1", "2", "3々）"]);
+      expect(digits.isTruncated).toBe(false);
+      expect(shown(digits)).toBe("123々）");
+      const word = lay("English、」と", { ...options, textAlign }, { height: 50 });
+      expect(lines(word)).toEqual(["E", "nglish、」", "と"]);
+      expect(word.isTruncated).toBe(false);
+      expect(shown(word)).toBe("English、」と");
+    }
+    // 列の最初のトークンでなければ、トークンごと次の列へ送る
+    expect(lines(lay("あ123々）", options, { height: 37 }))).toEqual(["あ", "123々）"]);
+    // 禁則を切れば追い出さない
+    expect(lines(lay("123々）", { ...options, kinsoku: false }, { height: 27 }))).toEqual(["123々", "）"]);
+  });
+
   it("does not break inside a tate-chu-yoko at the head of a column when kinsoku pushes characters out", () => {
     const options = { direction: "tbRl", dividesByWords: true } as const;
     // 12(10) + 々(10) = 20px で、「）」は入らない。「）」も「々」も列の先頭に置けないので、追い出しは列の先頭の縦中横まで戻る。

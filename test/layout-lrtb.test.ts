@@ -104,6 +104,35 @@ describe("kinsoku", () => {
     expect(lines(ctx)).toEqual(["日本語の", "組版。です"]);
   });
 
+  it("leaves only the first character of the line's first token when the push-out walks back to it", () => {
+    // 現状の挙動を固定するテスト（2026-11-11 に、単語を分けない案や追い出さない案と比べたうえで、今のままにすると決めた）。
+    // 追い出しは禁則を満たすことを優先する。トークン単位で戻って行の最初のトークンに届くと、その 1 文字目だけを行に残して
+    // 改行するので、単語や数字が 1 文字目の後ろで分かれる（元の Swift 版と同じ）
+    const options = { dividesByWords: true } as const;
+    // English(36.575) + 、(5) = 41.575px で、「」」(10) は入らない。「」」も「、」も行頭に置けないので、追い出しは English まで戻る
+    expect(lines(lay("English、」と", options, { width: 50 }))).toEqual(["E", "nglish、」", "と"]);
+    // 数字も同じ。12(10.45) + 々(10) = 20.45px で、「）」は入らない
+    expect(lines(lay("12々）", options, { width: 27 }))).toEqual(["1", "2々）"]);
+    // 和文の単語も 1 つのトークンなので同じ。2 文字目が行頭禁則の文字のときは、分けても行頭禁則を満たせない
+    expect(lines(lay("東京。", options, { width: 20 }))).toEqual(["東", "京。"]);
+    expect(lines(lay("コーヒー、", options, { width: 40 }))).toEqual(["コ", "ーヒー、"]);
+    // 1 行に収まらないトークンは文字単位で折り返す。その位置が禁則に反すると（「ー」は行頭に置けない）、やはり最初の文字まで戻る
+    expect(lines(lay("コミュニケーション", options, { width: 50 }))).toEqual(["コ", "ミュニケー", "ション"]);
+    // 行揃えが何であっても同じ分かれ方で、切り詰めにはならない
+    for (const textAlign of ["leading", "center", "trailing", "justify"] as const) {
+      const ctx = lay("English、」と", { ...options, textAlign }, { width: 50 });
+      expect(lines(ctx)).toEqual(["E", "nglish、」", "と"]);
+      expect(ctx.isTruncated).toBe(false);
+      expect(shown(ctx)).toBe("English、」と");
+    }
+    // 行の最初のトークンでなければ、トークンごと次の行へ送る
+    expect(lines(lay("あEnglish、」と", options, { width: 60 }))).toEqual(["あ", "English、」", "と"]);
+    // 単語で分けないとき（1 文字が 1 トークン）は、必要な文字だけを送る
+    expect(lines(lay("English、」と", {}, { width: 50 }))).toEqual(["Englis", "h、」と"]);
+    // 禁則を切れば追い出さない
+    expect(lines(lay("English、」と", { ...options, kinsoku: false }, { width: 50 }))).toEqual(["English、", "」と"]);
+  });
+
   it("does not break inside a run of leaders or dashes", () => {
     // 分離禁止: 「……」「——」の途中では改行せず、並びごと次の行へ送る
     for (const pair of ["……", "‥‥", "——", "――"]) {

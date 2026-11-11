@@ -20,6 +20,15 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
   大きく見積もられて切り詰められたままになり、縦書きでは列が左にずれた）。
 - 縦中横の中央寄せは行送り方向の寄せより前に行う（元実装は寄せた後に中央寄せするため、1em より広い 2 桁の縦中横が左端の列にあると
   領域の左にはみ出し、大きさを制限していなくても切り詰められた）。
+- 縦書きの列が領域の幅に収まるかどうかは、1em より広い縦中横（2 桁の数字。既定のフォントで約 1.06em）を列の 1em の箱として見る
+  （columnSpanTbRl）。数字は列の中央に寄せるので箱の両側に同じだけはみ出すが、はみ出しは列の幅に数えない。列を寄せる位置は、
+  今までどおり数字のはみ出しも領域に収まるように決め、それでは列の箱が領域から出るとき（幅が列数ちょうどで、右端か左端の列に
+  2 桁の縦中横があるときなど）だけ、箱が収まるところまで戻して、数字を領域の外にはみ出させる。数字を描く位置と大きさは変えない
+  （幅と高さを両方決めた領域では、はみ出した分を SVG が切り取る。既定のフォントでは、数字の字面はほぼ箱の中にある）。
+  （はみ出しを含む矩形で見ると、幅が列数ちょうどの領域では、端の列に 2 桁の縦中横があるだけで、はみ出しの分（17px で 0.5px
+  足らず）のために最後の列が隠れた。「12」だけを 1 列ぶんの幅に組むと、何も表示されなかった。元実装も数字のはみ出しを含む矩形で
+  寄せるので、右端の列に 2 桁の縦中横があると左端の列が領域から出る。領域と重なる run は表示するので列ごとは隠れないが、
+  その列の文字がほぼ省略記号になる。）
 - 省略記号が置き換える文字より大きくて領域からはみ出すときは、収まるまで同じ行の手前の文字も隠す（CSS の text-overflow: ellipsis と同じ）。
   横書きは置き換える run のフォントで「…」の送り幅を測り、縦書きは「︙」を 1em とする。行の最初の文字でも収まらなければそこに置く。
   （元実装は置き換えた文字の位置にそのまま描くため、半角の欧文などを省略記号にすると、行末で最大 0.5em ほど領域からはみ出して切れた。）
@@ -99,7 +108,7 @@ import {
   isNotStartingChar,
   isSpaceChar,
 } from "./punctuation.js";
-import type { Rect, Run, Token } from "./types.js";
+import type { Run, Token } from "./types.js";
 
 const EPS = 1e-6;
 
@@ -134,6 +143,11 @@ export class Layouter {
   private x = 0;
   private y = 0;
   private tmpX: number | null = null;
+  /**
+   * 1em より広い縦中横のトークン ID と、その数字が列の 1em の箱から片側にはみ出す長さ（px）。
+   * applyTateChuYokoTbRl が中央に寄せるときに決め、columnSpanTbRl が使う。
+   */
+  private readonly tateChuYokoOverhang = new Map<number, number>();
 
   /** コンテキストの runs を対象にレイアウタを作る。 */
   constructor(private readonly ctx: StoneContext) {}
@@ -632,18 +646,27 @@ export class Layouter {
    * 行送り方向の寄せに使う長さ。先頭の行から順に、行送り方向の大きさ limit に収まる行までの長さを返す
    * （収まらない行は updateVisibility で隠すので寄せに含めない。先頭の行は収まらなくても含める）。
    * extent(run) は先頭の行の始まりから run の終わりまでの行送り方向の長さ。
+   * measured を渡すと、収まるかどうかは extent で見て、返す長さは measured で測る（縦書きで、列の箱が収まる列までの、
+   * 縦中横の数字のはみ出しを含めた長さ。shiftPositionTbRl）。
    */
-  private fittingExtent(extent: (run: Run) => number, limit: number): number {
+  private fittingExtent(
+    extent: (run: Run) => number,
+    limit: number,
+    measured: (run: Run) => number = extent,
+  ): number {
     const runs = this.ctx.runs;
     let result = -Infinity;
     let lineExtent = -Infinity;
+    let lineMeasured = -Infinity;
     for (let i = 0; i < runs.length; i++) {
       lineExtent = Math.max(lineExtent, extent(runs[i]));
+      lineMeasured = measured === extent ? lineExtent : Math.max(lineMeasured, measured(runs[i]));
       if (i + 1 < runs.length && runs[i + 1].line === runs[i].line) continue;
       // 行の終わり
       if (result !== -Infinity && lineExtent > limit + EPS) break;
-      result = Math.max(result, lineExtent);
+      result = Math.max(result, lineMeasured);
       lineExtent = -Infinity;
+      lineMeasured = -Infinity;
     }
     return result;
   }
@@ -688,11 +711,18 @@ export class Layouter {
     const minX = horizontal ? lead : 0;
     const minY = horizontal ? 0 : lead;
 
-    const contains = (f: Rect): boolean =>
-      f.x >= minX - EPS && f.y >= minY - EPS && f.x + f.width <= W + EPS && f.y + f.height <= H + EPS;
+    // 縦書きで 1em より広い縦中横があるときは、列の幅を列の 1em の箱で見る（箱が収まっていれば、はみ出した数字ごと表示する）
+    const boxed = !horizontal && this.tateChuYokoOverhang.size > 0;
+    const contains = (run: Run): boolean => {
+      const f = run.frame;
+      let left = f.x;
+      let right = f.x + f.width;
+      if (boxed) ({ left, right } = this.columnSpanTbRl(run));
+      return left >= minX - EPS && f.y >= minY - EPS && right <= W + EPS && f.y + f.height <= H + EPS;
+    };
 
     // 領域からはみ出す最初の run を含む行の先頭（ここから後ろを隠す）
-    let end = runs.findIndex((run) => !contains(run.frame));
+    let end = runs.findIndex((run) => !contains(run));
     if (end === -1) end = runs.length;
     while (end > 0 && end < runs.length && runs[end - 1].line === runs[end].line) end -= 1;
 
@@ -827,6 +857,12 @@ export class Layouter {
   // Post layout (TbRl)
   //--------------------------------------------------------------//
 
+  /**
+   * 縦書きの列を、行送り方向（x）に寄せる。
+   * 寄せる位置は run の矩形で決める（1em より広い縦中横の数字が列の箱からはみ出す分も、領域に収まるように寄せる）。
+   * 列が幅に収まるかどうかは、列の 1em の箱で見る。はみ出しまで領域に収めると列の箱が領域から出るとき
+   *（幅が列数ちょうどで、右端か左端の列に 2 桁の縦中横があるときなど）は、箱が収まるところまで戻して、数字を領域の外にはみ出させる。
+   */
   private shiftPositionTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
@@ -841,8 +877,19 @@ export class Layouter {
     if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return;
 
     const W = ctx.renderSize.width;
+    // 右端から run の左端までの長さ（run の矩形で測る。数字のはみ出しを含む）
+    const extent = (run: Run): number => maxX - run.frame.x;
+    // 1em より広い縦中横があれば、列の箱（数字のはみ出しを除いた範囲）で測った長さも使う
+    const boxed = Number.isFinite(W) && this.tateChuYokoOverhang.size > 0;
+    let columnMaxX = maxX;
+    if (boxed) {
+      columnMaxX = -Infinity;
+      for (const run of runs) columnMaxX = Math.max(columnMaxX, this.columnSpanTbRl(run).right);
+    }
+    const columnExtent = (run: Run): number => columnMaxX - this.columnSpanTbRl(run).left;
+
     // middle / end で寄せるのは、先頭（右）から幅に収まる列まで
-    const fittingMinX = maxX - this.fittingExtent((run) => maxX - run.frame.x, W);
+    const fittingMinX = maxX - (boxed ? this.fittingExtent(columnExtent, W, extent) : this.fittingExtent(extent, W));
     let dx: number;
     switch (ctx.directionAlign) {
       case "start":
@@ -856,16 +903,32 @@ export class Layouter {
         break;
     }
 
+    if (boxed) {
+      // 幅に収まる列の箱が、領域から出ないようにする（出るのは数字のはみ出しだけにする）
+      const columnMinX = columnMaxX - this.fittingExtent(columnExtent, W);
+      const lower = -columnMinX;
+      const upper = W - columnMaxX;
+      if (lower <= upper + EPS) {
+        if (dx < lower - EPS) dx = lower;
+        else if (dx > upper + EPS) dx = upper;
+      }
+    }
+
     for (const run of runs) {
       moveRun(run, dx, 0);
     }
   }
 
-  /** 縦中横の数字を列の中央に寄せる。 */
+  /**
+   * 縦中横の数字を列の中央に寄せる。1em より広い縦中横は、列の 1em の箱から両側に同じ長さだけはみ出すので、その長さを覚えておく
+   *（列が領域に収まるかどうかは、はみ出しを除いて見る。columnSpanTbRl）。
+   */
   private applyTateChuYokoTbRl(): void {
     const ctx = this.ctx;
     const runs = ctx.runs;
-    for (const token of ctx.tokens) {
+    this.tateChuYokoOverhang.clear();
+    for (let tokenId = 0; tokenId < ctx.tokens.length; tokenId++) {
+      const token = ctx.tokens[tokenId];
       if (!ctx.isTateChuYokoToken(token)) continue;
       let total = 0;
       for (let i = token.start; i < token.end; i++) total += runs[i].advance;
@@ -873,7 +936,20 @@ export class Layouter {
       for (let i = token.start; i < token.end; i++) {
         moveRun(runs[i], dx, 0);
       }
+      if (dx < -EPS) this.tateChuYokoOverhang.set(tokenId, -dx);
     }
+  }
+
+  /**
+   * 縦書きで、run が列の並ぶ方向（x）に占める範囲。列を領域に収めるときと、領域に収まっているかどうかを見るときに使う。
+   * ふつうは run の矩形の左右。1em より広い縦中横の数字は、列の 1em の箱（数字のはみ出しを除いた範囲）にする。
+   */
+  private columnSpanTbRl(run: Run): { left: number; right: number } {
+    const overhang = this.tateChuYokoOverhang.get(run.tokenId);
+    if (overhang === undefined) return { left: run.frame.x, right: run.frame.x + run.frame.width };
+    const ctx = this.ctx;
+    const left = ctx.runs[ctx.tokens[run.tokenId].start].frame.x + overhang;
+    return { left, right: left + ctx.adjustFontSize };
   }
 
   /** 縦書きの 1 列を textAlign に応じて寄せる。 */
@@ -966,7 +1042,7 @@ export class Layouter {
 
   /** 縦書きの後処理。 */
   private postLayoutTbRl(): void {
-    // 縦中横の中央寄せは寄せより前に行う（1em より広い縦中横のはみ出しも含めて寄せる）
+    // 縦中横の中央寄せは寄せより前に行う（1em より広い縦中横のはみ出しも含めて寄せる。列の箱が領域から出るときだけ、箱を収める）
     this.applyTateChuYokoTbRl();
     this.shiftPositionTbRl();
     this.forEachLine((start, end) => this.alignLineTbRl(start, end));

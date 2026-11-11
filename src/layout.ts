@@ -49,6 +49,12 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
   終わり括弧「}」「⦆」を行頭に置かない。
   （元実装の集合は「？!‼」「。.」のように ASCII の「!」「.」を 2 回ずつ書いていて全角の「！」「．」がなく、「，」「：」「；」「・」も
   なかったため、これらが行頭に来た。小書きの仮名と「々」は行頭禁則なのに「ー」「ゝ」「ゞ」は行頭に来るという混ざった状態だった。）
+- 縦書きの折り返しは、次のトークン（トークンの途中なら次の文字）が列の中で占める長さで判定する。正立の文字（和文・絵文字）は 1em、
+  縦中横は横に並べた 1 つのまとまりで 1em、回転する欧文は送り幅（extentOfToken / columnExtentOfRun）。
+  （元実装は、次のトークンを横書きの送り幅の合計で見積もるため、1 桁の縦中横（約 0.55em）や半角カナ、スケールを 1 未満にした和文が
+  列末に来ると、残りが 1em に足りなくても同じ列に置かれて領域からはみ出し、その列から後ろが切り詰められた。2 桁の縦中横は逆に
+  1em より長く見積もられ、残りがちょうど 1em の列に入らなかった。トークンの途中では次の文字をいつも 1em と見積もるため、
+  列に収まる欧文の単語が、残りが 1em を切ったところで途中から次の列へ折り返された。）
 
 Swift 版にない追加（これも意図的な差異。オプションを指定しない限り、挙動は変わらない）:
 - 字間（letterSpacing、px）。CSS の letter-spacing と同じく各文字の後ろに足し、run の矩形（frame）の行方向の長さに含める。
@@ -142,15 +148,32 @@ export class Layouter {
   }
 
   /**
-   * トークン（run の範囲）の行方向の長さ。送り幅に字間を足したもので、折り返しの判定に使う（約物の詰めは見ない）。
-   * 縦中横は横に並べた 1 つのまとまりなので、字間は後ろに 1 回だけ足す。
+   * 縦書きで run が列の中で占める長さ（字間を含む）。layoutRunTbRl が作る矩形の高さと同じ見積もりで、約物の詰めは見ない。
+   * 回転する欧文は送り幅、正立の文字（和文・絵文字・縦中横の数字）は 1em、改行は 0。
+   */
+  private columnExtentOfRun(runId: number): number {
+    const ctx = this.ctx;
+    const run = ctx.runs[runId];
+    if (run.isNewline) return 0;
+    return this.spaced(runId, ctx.isClockwise(run) ? run.advance : ctx.adjustFontSize);
+  }
+
+  /**
+   * トークン（run の範囲）が行の中で占める長さ（字間を含む）。折り返しの判定に使う（約物の詰めは見ない）。
+   * 横書きは送り幅の合計。縦書きは、列の中で実際に占める長さ（columnExtentOfRun）の合計で、縦中横は横に並べた 1 つのまとまりとして
+   * 1em（字間は後ろに 1 回だけ）。横書きの送り幅で見積もると、1 桁の縦中横や半角カナのように送り幅が 1em より狭い文字が、列からはみ出す。
    */
   private extentOfToken(token: Token): number {
     const ctx = this.ctx;
-    if (ctx.adjustLetterSpacing === 0) return ctx.advanceOfToken(token);
-    if (ctx.isTateChuYokoToken(token)) return this.spaced(token.end - 1, ctx.advanceOfToken(token));
+    if (ctx.direction === "lrTb") {
+      if (ctx.adjustLetterSpacing === 0) return ctx.advanceOfToken(token);
+      let total = 0;
+      for (let i = token.start; i < token.end; i++) total += this.spaced(i, ctx.runs[i].advance);
+      return total;
+    }
+    if (ctx.isTateChuYokoToken(token)) return this.columnExtentOfRun(token.end - 1);
     let total = 0;
-    for (let i = token.start; i < token.end; i++) total += this.spaced(i, ctx.runs[i].advance);
+    for (let i = token.start; i < token.end; i++) total += this.columnExtentOfRun(i);
     return total;
   }
 
@@ -435,9 +458,10 @@ export class Layouter {
 
     if (this.runId + 1 < runs.length) {
       const next = runs[this.runId + 1];
+      // どちらも、列の中で占める長さで見る（正立の文字と縦中横は 1em、回転する欧文は送り幅）
       if (run.tokenId !== next.tokenId) {
         if (this.y + this.extentOfToken(ctx.tokens[next.tokenId]) > this.maxY) this.goNextLine();
-      } else if (this.y + this.spaced(this.runId + 1, ctx.adjustFontSize) > this.maxY) {
+      } else if (this.y + this.columnExtentOfRun(this.runId + 1) > this.maxY) {
         this.goNextLine();
       }
     }

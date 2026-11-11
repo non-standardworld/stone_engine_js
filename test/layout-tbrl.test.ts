@@ -146,6 +146,52 @@ describe("layout tbRl", () => {
     ]);
   });
 
+  it("wraps a tate-chu-yoko by the 1em it takes in the column, not by the advance of its digits", () => {
+    // 1 桁の縦中横は列の中で 1em を占める。送り幅（5.225px）で見積もると、残り 7px の列に置かれてはみ出し、その列から後ろが隠れる
+    const one = lay("あいうえ1か", { direction: "tbRl", dividesByWords: true }, { height: 47 });
+    expect(lines(one)).toEqual(["あいうえ", "1か"]);
+    expect(shown(one)).toBe("あいうえ1か");
+    expect(one.isTruncated).toBe(false);
+    // 2 桁の縦中横も 1em（送り幅の合計は 10.45px）。残りがちょうど 1em の列に入る
+    const two = lay("あいうえ12か", { direction: "tbRl", dividesByWords: true }, { height: 50 });
+    expect(lines(two)).toEqual(["あいうえ12", "か"]);
+    expect(runOf(two, "1").run.frame.y).toBe(40);
+    expect(two.isTruncated).toBe(false);
+    // 文字単位で分けたときの数字（1 桁ずつの縦中横）も同じ
+    expect(lines(lay("あいうえ1か", { direction: "tbRl" }, { height: 47 }))).toEqual(["あいうえ", "1か"]);
+  });
+
+  it("wraps upright characters by 1em even when their advance is narrower", () => {
+    // 半角カナは正立で 1em を占める（送り幅は 5.5px）
+    const kana = lay("あいうえｱか", { direction: "tbRl" }, { height: 47 });
+    expect(lines(kana)).toEqual(["あいうえ", "ｱか"]);
+    expect(shown(kana)).toBe("あいうえｱか");
+    // 和文のスケールを小さくしても、列の中では 1em ずつ送る（送り幅は 9px）
+    const scaled = lay(
+      "あいうえおか",
+      { direction: "tbRl", fonts: { japanese: { family: "", scale: 0.9 } } },
+      { height: 49 },
+    );
+    expect(lines(scaled)).toEqual(["あいうえ", "おか"]);
+    expect(scaled.isTruncated).toBe(false);
+    // 回転する欧文は送り幅（2 文字で 10.45px）で見積もる
+    expect(lines(lay("あいうえab", { direction: "tbRl", dividesByWords: true }, { height: 51 }))).toEqual(["あいうえab"]);
+    expect(lines(lay("あいうえab", { direction: "tbRl", dividesByWords: true }, { height: 50 }))).toEqual(["あいうえ", "ab"]);
+    // 改行は長さを持たないので、いっぱいの列の最後にそのまま置く
+    expect(lines(lay("あいうえ\nか", { direction: "tbRl" }, { height: 40 }))).toEqual(["あいうえ", "か"]);
+  });
+
+  it("does not split a rotated latin word that fits in the column", () => {
+    // あい(20) + English(5.225 × 7 = 36.575) = 56.575px。次の文字を 1em と見積もると、収まる単語なのに「h」の前で折り返してしまう
+    const ctx = lay("あいEnglishう", { direction: "tbRl", dividesByWords: true }, { height: 60 });
+    expect(lines(ctx)).toEqual(["あいEnglish", "う"]);
+    const h = runOf(ctx, "h").run;
+    expect(h.frame.y + h.frame.height).toBeCloseTo(56.575);
+    expect(lines(lay("Englishの単語", { direction: "tbRl", dividesByWords: true }, { height: 40 }))[0]).toBe("English");
+    // 列より長い単語は、入るところ（5 文字で 26.125px）まで詰めてから折り返す
+    expect(lines(lay("English", { direction: "tbRl", dividesByWords: true }, { height: 30 }))).toEqual(["Engli", "sh"]);
+  });
+
   it("can turn tate-chu-yoko off", () => {
     const ctx = lay("あ12", { direction: "tbRl", dividesByWords: true, allowsTateChuYoko: false });
     expect(ctx.isClockwise(runOf(ctx, "1").run)).toBe(true);

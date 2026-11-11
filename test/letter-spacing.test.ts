@@ -234,10 +234,13 @@ describe("letter spacing tbRl", () => {
   });
 
   it("measures a tate-chu-yoko with one spacing when wrapping", () => {
-    // あいう(36) の後ろの「12」は、送り幅の合計 10.45px + 字間 2px = 12.45px として収まるかを見る
+    // あいう(36) の後ろの「12」は、1em のまとまり（10px）+ 字間 2px = 12px として収まるかを見る
     const options = { direction: "tbRl", dividesByWords: true, letterSpacing: 2 } as const;
-    expect(lines(lay("あいう12え", options, { height: 48 }))).toEqual(["あいう", "12え"]);
-    expect(lines(lay("あいう12え", options, { height: 49 }))).toEqual(["あいう12", "え"]);
+    expect(lines(lay("あいう12え", options, { height: 47 }))).toEqual(["あいう", "12え"]);
+    expect(lines(lay("あいう12え", options, { height: 48 }))).toEqual(["あいう12", "え"]);
+    // 1 桁でも同じ 1em + 字間
+    expect(lines(lay("あいう1え", options, { height: 47 }))).toEqual(["あいう", "1え"]);
+    expect(lines(lay("あいう1え", options, { height: 48 }))).toEqual(["あいう1", "え"]);
   });
 
   it("keeps tate-chu-yoko digits together when justifying with the spacing", () => {

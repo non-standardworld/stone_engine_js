@@ -281,19 +281,54 @@ export class StoneContext {
     return [Math.max(0, lo), Math.min(hi, this.runs.length)];
   }
 
-  /** 行の先頭位置（run が無い行のカーソル位置などに使う）。縮小後の寸法で計算する。 */
-  firstRunFrame(line: number): Rect {
+  /**
+   * レイアウタが行を行送り方向に寄せた量（px）。寄せていないときの行の位置（横書きは先頭の行の上端が 0、縦書きはいちばん左の
+   * 矩形の左端が 0）からのずれで、レイアウト後の run の矩形から求める。
+   * - 横書き: 高さを決めて directionAlign を middle / end にしたとき。先頭の行の run の矩形の上端の位置。
+   * - 縦書き: 幅を決めたとき。いちばん左の run の矩形の左端の位置（幅を決めると、directionAlign が start でも列は領域の
+   *   右端から並ぶ）。
+   * どの run も同じ量だけ寄せてあるので、領域に収まらずに隠れた行や、末尾の空行も含めて、どの行にも同じ値が使える。
+   * 寄せていないレイアウト（横書きの start と高さを決めないとき、縦書きの幅を決めないとき）と、run の無いテキストでは 0。
+   */
+  private lineShift(): number {
+    const runs = this.runs;
+    if (runs.length === 0) return 0;
+    let shift = Infinity;
+    if (this.direction === "lrTb") {
+      if (this.directionAlign === "start" || !Number.isFinite(this.renderSize.height)) return 0;
+      for (const run of runs) {
+        if (run.line !== 0) break;
+        shift = Math.min(shift, run.frame.y);
+      }
+    } else {
+      if (!Number.isFinite(this.renderSize.width)) return 0;
+      for (const run of runs) shift = Math.min(shift, run.frame.x);
+    }
+    return Number.isFinite(shift) ? shift : 0;
+  }
+
+  /** 行送り方向に shift だけ寄せたレイアウトでの、行の先頭位置（firstRunFrame の本体）。 */
+  private lineFrame(line: number, shift: number): Rect {
     const size = this.adjustFontSize;
     const lineHeight = this.adjustLineHeight;
     if (this.direction === "lrTb") {
-      return { x: 0, y: line * lineHeight, width: 0, height: size };
+      return { x: 0, y: line * lineHeight + shift, width: 0, height: size };
     }
     return {
-      x: this.renderedSize.width - line * lineHeight - size,
+      x: this.renderedSize.width - line * lineHeight - size + shift,
       y: 0,
       width: size,
       height: 0,
     };
+  }
+
+  /**
+   * 行の先頭位置（run が無い行のカーソル位置などに使う）。縮小後の寸法で計算する。
+   * 行送り方向の位置（横書きの y、縦書きの x）は、レイアウタが寄せたあとの位置（directionAlign の middle / end と、縦書きで幅を
+   * 決めたときの右端への寄せを含む）。行の中の位置（横書きの x、縦書きの y）は、textAlign や字下げにかかわらず 0。
+   */
+  firstRunFrame(line: number): Rect {
+    return this.lineFrame(line, this.lineShift());
   }
 
   /** 行間を含めた run の矩形（選択範囲の描画などに使う）。 */
@@ -328,9 +363,10 @@ export class StoneContext {
     const isAll = range === null;
     const [lo, hi] = this.clampRange(range);
 
-    // 行送り方向での、点と行の中心の距離
+    // 行送り方向での、点と行の中心の距離（行の位置は、行送り方向に寄せたあとの位置で見る）
+    const shift = this.lineShift();
     const lineDistance = (line: number): number => {
-      const f = this.firstRunFrame(line);
+      const f = this.lineFrame(line, shift);
       return horizontal ? Math.abs(point.y - (f.y + f.height * 0.5)) : Math.abs(point.x - (f.x + f.width * 0.5));
     };
 

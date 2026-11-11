@@ -254,3 +254,50 @@ describe("closestRunIndex", () => {
     }
   });
 });
+
+describe("line positions with a column that holds only a one-digit tate-chu-yoko", () => {
+  // 1 桁の縦中横（5.225px）だけの列は、列を寄せる位置と renderedSize を、数字の矩形ではなく列の 1em の箱で決める
+  // （layout-tbrl.test.ts）。行の位置（firstRunFrame）も列の箱の位置になり、どの列を指しても、その列の文字が返る
+  it("returns the column boxes when the rightmost or the leftmost column holds only the digit", () => {
+    // 幅 40 に 2 列。列の箱は x = 30 と 20。「7」の矩形は 22.3875〜27.6125 で、寄せた量を矩形の左端で測ると 2.3875px ずれる
+    const left = lay("あ7", { direction: "tbRl" }, { height: 10, width: 40 });
+    expect(runOf(left, "7").run.frame.x).toBeCloseTo(22.3875);
+    expect(linePositions(left)[0]).toBeCloseTo(30);
+    expect(linePositions(left)[1]).toBeCloseTo(20);
+    // 右端の列が数字だけのときは、renderedSize の幅を数字の矩形で測ると、同じだけ左にずれる
+    const right = lay("7あ", { direction: "tbRl" }, { height: 10, width: 40 });
+    expect(runOf(right, "7").run.frame.x).toBeCloseTo(32.3875);
+    expect(linePositions(right)[0]).toBeCloseTo(30);
+    expect(linePositions(right)[1]).toBeCloseTo(20);
+    // 幅を決めないとき（寄せない）は、右端の列の箱が renderedSize の右端
+    const auto = lay("7あ", { direction: "tbRl" }, { height: 10 });
+    expect(linePositions(auto)).toEqual([10, 0]);
+  });
+
+  it("puts every line where it would be if the digits were full-width characters", () => {
+    for (const directionAlign of ["start", "middle", "end"] as const) {
+      for (const width of [undefined, 30, 40, 47.5]) {
+        for (const text of ["7あい", "あい7", "7あ8", "あ7い", "7"]) {
+          const options: StoneOptions = { direction: "tbRl", directionAlign };
+          const ctx = lay(text, options, { height: 10, width });
+          const reference = linePositions(lay(text.replace(/\d/g, "字"), options, { height: 10, width }));
+          const label = JSON.stringify({ text, directionAlign, width });
+          linePositions(ctx).forEach((x, line) => expect(x, label).toBeCloseTo(reference[line]));
+          expect(misplacedHalves(ctx), label).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it("does not change the positions, not even by a rounding error, when the digit shares its column with other characters", () => {
+    // 数字と文字が同じ列にあれば、寄せた量は今までどおり文字の矩形の左端で決まる（列の箱は数字の位置から求め直すので、使わない）
+    for (const fontSize of [10, 13.5, 16, 17]) {
+      for (const lineHeightScale of [1, 1.2, 1.7]) {
+        const options: StoneOptions = { direction: "tbRl", fontSize, lineHeightScale };
+        const ctx = lay("7月\n晴れ7\nあ7い\n月7", options, { width: 200 });
+        const reference = lay("字月\n晴れ字\nあ字い\n月字", options, { width: 200 });
+        expect(linePositions(ctx)).toEqual(linePositions(reference));
+      }
+    }
+  });
+});

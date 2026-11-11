@@ -131,6 +131,20 @@ describe("SVG output", () => {
     expect(svgString(lay("78\nあい", { direction: "tbRl", dividesByWords: true }, { width: 20 }))).toContain("overflow:visible");
   });
 
+  it("sizes the SVG of vertical text by its column boxes when an edge column holds only a one-digit tate-chu-yoko", () => {
+    // 幅を決めない領域。1 桁の縦中横（5.225px）は列の中央に描く。SVG の幅は、数字の幅までの 18px（17.6125px の切り上げ）ではなく、
+    // 列の 1em の箱の並びの幅（2 列ぶんの 20px）にする
+    const left = svgString(lay("あ7", { direction: "tbRl" }, { height: 10 }));
+    expect(left).toContain('width="20" height="10" viewBox="0 0 20 10"');
+    expect(left).toContain('<tspan x="10" y="8.8" data-run="0">あ</tspan>');
+    expect(left).toContain('<tspan x="2.39" y="7.63" data-run="1">7</tspan>');
+    // 右端の列が数字だけのときも同じ幅で、文字の位置は SVG の左端から変わらない
+    const right = svgString(lay("7あ", { direction: "tbRl" }, { height: 10 }));
+    expect(right).toContain('width="20" height="10" viewBox="0 0 20 10"');
+    expect(right).toContain('<tspan x="12.39" y="7.63" data-run="0">7</tspan>');
+    expect(right).toContain('<tspan x="0" y="8.8" data-run="1">あ</tspan>');
+  });
+
   it("draws the ellipsis from the start of the frame of a compressed opening bracket", () => {
     // 半角にした「は原点を左にずらして描くが、省略記号は矩形の先頭から描く（前の文字に重ねない）
     const ctx = lay("あ「\nい", { punctuationMode: "half" }, { height: 10 });

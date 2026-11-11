@@ -38,6 +38,9 @@ export const DEFAULT_OPTIONS: Required<Omit<StoneOptions, "fonts">> = {
   textIndentEachLine: true,
 };
 
+/** 列の 1em の箱と run の矩形の位置を比べるときの許容誤差（px）。 */
+const COLUMN_BOX_EPS = 1e-6;
+
 /** 長さのオプション（px）。数値でない値や非有限の値は 0 にする。 */
 function finiteLength(value: number | undefined, fallback: number): number {
   const n = value ?? fallback;
@@ -286,7 +289,9 @@ export class StoneContext {
    * 矩形の左端が 0）からのずれで、レイアウト後の run の矩形から求める。
    * - 横書き: 高さを決めて directionAlign を middle / end にしたとき。先頭の行の run の矩形の上端の位置。
    * - 縦書き: 幅を決めたとき。いちばん左の run の矩形の左端の位置（幅を決めると、directionAlign が start でも列は領域の
-   *   右端から並ぶ）。
+   *   右端から並ぶ）。1em より狭い縦中横（1 桁の数字など）は、矩形ではなく列の 1em の箱の左端で見る。レイアウタが、列を寄せる
+   *   位置と renderedSize の幅を列の箱で決めるので（layout.ts の alignSpanTbRl）、数字だけの列がいちばん左にあるとき、
+   *   寄せていないレイアウトで 0 になるのは、数字の矩形の左端ではなく列の箱の左端。
    * どの run も同じ量だけ寄せてあるので、領域に収まらずに隠れた行や、末尾の空行も含めて、どの行にも同じ値が使える。
    * 寄せていないレイアウト（横書きの start と高さを決めないとき、縦書きの幅を決めないとき）と、run の無いテキストでは 0。
    */
@@ -303,8 +308,28 @@ export class StoneContext {
     } else {
       if (!Number.isFinite(this.renderSize.width)) return 0;
       for (const run of runs) shift = Math.min(shift, run.frame.x);
+      // どの矩形よりも左まである列の箱があれば、その左端（箱は数字の位置から求め直すので、矩形と同じ位置なら矩形の値を使う）
+      const box = this.leftmostNarrowTateChuYokoBox();
+      if (box < shift - COLUMN_BOX_EPS) shift = box;
     }
     return Number.isFinite(shift) ? shift : 0;
+  }
+
+  /**
+   * 縦書きで、1em より狭い縦中横（1 桁の数字など）がある列の 1em の箱の左端のうち、いちばん左のもの。無ければ Infinity。
+   * 縦中横は列の中央に寄せてあるので、数字の並びの中央から求める。
+   */
+  private leftmostNarrowTateChuYokoBox(): number {
+    const em = this.adjustFontSize;
+    let left = Infinity;
+    for (const token of this.tokens) {
+      if (!this.isTateChuYokoToken(token)) continue;
+      const first = this.runs[token.start].frame;
+      const last = this.runs[token.end - 1].frame;
+      const right = last.x + last.width;
+      if (right - first.x < em - COLUMN_BOX_EPS) left = Math.min(left, (first.x + right - em) * 0.5);
+    }
+    return left;
   }
 
   /** 行送り方向に shift だけ寄せたレイアウトでの、行の先頭位置（firstRunFrame の本体）。 */

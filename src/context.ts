@@ -410,23 +410,31 @@ export class StoneContext {
   // Tate chu yoko
   //--------------------------------------------------------------//
 
-  /** トークンが縦中横で組まれるかどうか（先頭の run で判定する）。 */
+  /** トークンが縦中横で組まれるかどうか（先頭の run で判定する。同じトークンの run は、どれも同じ結果になる）。 */
   isTateChuYokoToken(token: Token): boolean {
     if (token.start >= token.end || token.start >= this.runs.length) return false;
     return this.isTateChuYoko(this.runs[token.start]);
   }
 
-  /** 縦中横（縦書き中に正体で組む 2 桁以下の数字）の run かどうか。 */
+  /**
+   * 縦中横（縦書き中に正体で組む 2 桁以下の数字）の run かどうか。トークン単位で決まる。
+   * 縦中横にするのは、2 文字以下で、どの文字も回転する文字種（欧文フォント）の数字であるトークン。全角の数字のように正立する
+   * 文字種（和文・絵文字）の数字が 1 つでも混ざったトークン（「1２」「２1」「Ⅱ２」）は、どの run も縦中横にしない
+   * （半角の数字は回転する欧文、全角の数字は正立の和文として、3 桁以上の数字と同じように 1 文字ずつ送る）。
+   * レイアウトは「縦中横のトークンは、どの run も縦中横」として組むので、run ごとに文字種を見て半角の数字だけを縦中横にすると、
+   * 横に並べる位置の戻し忘れや、行揃えでの数え落としが起きる。
+   */
   isTateChuYoko(run: Run): boolean {
     if (!this.allowsTateChuYoko) return false;
-    if (notNeedsToClockwiseInTbRl(this.fontManager.script(run.fontId))) return false;
     if (this.direction !== "tbRl") return false;
     const token = this.tokens[run.tokenId];
-    if (!token) return false;
+    if (!token || token.end - token.start > 2) return false;
     for (let i = token.start; i < token.end; i++) {
-      if (!this.runs[i].isNumber) return false;
+      const member = this.runs[i];
+      if (!member.isNumber) return false;
+      if (notNeedsToClockwiseInTbRl(this.fontManager.script(member.fontId))) return false;
     }
-    return token.end - token.start <= 2;
+    return true;
   }
 
   //--------------------------------------------------------------//

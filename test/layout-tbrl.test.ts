@@ -271,6 +271,134 @@ describe("layout tbRl", () => {
     }
   });
 
+  it("does not set a two-digit token that mixes half-width and full-width digits as a tate-chu-yoko", () => {
+    const options = { direction: "tbRl", dividesByWords: true } as const;
+    // 「1２」は 1 つのトークン。半角の「1」だけを縦中横にすると、「２」が「1」の横に置かれ、後ろの文字の列が「1」の幅だけ右にずれる
+    const ctx = lay("あ1２いう", options);
+    const one = runOf(ctx, "1").run;
+    const two = runOf(ctx, "２").run;
+    expect(ctx.tokenString(one.tokenId)).toBe("1２");
+    expect(two.tokenId).toBe(one.tokenId);
+    expect(ctx.isTateChuYokoToken(ctx.tokens[one.tokenId])).toBe(false);
+    for (const run of [one, two]) expect(ctx.isTateChuYoko(run)).toBe(false);
+    // 半角の数字は回転する欧文、全角の数字は正立の和文として、1 文字ずつ送る（3 桁以上の数字と同じ）
+    expect(ctx.isClockwise(one)).toBe(true);
+    expect(ctx.isClockwise(two)).toBe(false);
+    expect(ctx.usesVerticalGlyph(two)).toBe(true);
+    expect(one.frame.x).toBe(0);
+    expect(one.frame.y).toBe(10);
+    expect(one.frame.width).toBe(10);
+    expect(one.frame.height).toBeCloseTo(5.225);
+    expect(two.frame.x).toBe(0);
+    expect(two.frame.y).toBeCloseTo(15.225);
+    expect(two.frame.width).toBe(10);
+    expect(two.frame.height).toBe(10);
+    expect(runOf(ctx, "い").run.frame.y).toBeCloseTo(25.225);
+    for (const run of ctx.runs) expect(run.frame.x).toBe(0); // 後ろの文字も同じ列に並ぶ
+    expect(ctx.renderedSize.width).toBe(10);
+    expect(ctx.renderedSize.height).toBeCloseTo(45.225);
+
+    // 全角の数字が先でも同じ
+    const reversed = lay("あ２1い", options);
+    const last = runOf(reversed, "1").run;
+    expect(reversed.tokenString(last.tokenId)).toBe("２1");
+    expect(reversed.isTateChuYoko(last)).toBe(false);
+    expect(reversed.isClockwise(last)).toBe(true);
+    expect(last.frame.x).toBe(0);
+    expect(last.frame.y).toBe(20);
+    expect(last.frame.width).toBe(10);
+    expect(last.frame.height).toBeCloseTo(5.225);
+    expect(runOf(reversed, "い").run.frame.y).toBeCloseTo(25.225);
+
+    // 数字（\p{N}）のうち欧文フォントで組むローマ数字も、全角の数字と混ざったトークンでは縦中横にしない
+    const roman = lay("あⅡ２い", options);
+    const numeral = runOf(roman, "Ⅱ").run;
+    expect(roman.tokenString(numeral.tokenId)).toBe("Ⅱ２");
+    expect(roman.isTateChuYoko(numeral)).toBe(false);
+    expect(roman.isClockwise(numeral)).toBe(true);
+    // 半角だけ・全角だけの 2 桁は今までどおり（半角は縦中横、全角は 1 文字ずつ正立）
+    const half = lay("あ12い", options);
+    expect(half.isTateChuYoko(runOf(half, "1").run)).toBe(true);
+    expect(half.isTateChuYoko(runOf(half, "2").run)).toBe(true);
+    const full = lay("あ１２い", options);
+    for (const char of ["１", "２"]) {
+      const { run } = runOf(full, char);
+      expect(full.isTateChuYoko(run)).toBe(false);
+      expect(full.isClockwise(run)).toBe(false);
+    }
+    expect(runOf(full, "２").run.frame.y).toBe(20);
+  });
+
+  it("keeps the columns in place after a mixed-width two-digit token", () => {
+    // 「1２」の横の位置が戻らないと、後ろの列が「1」の幅だけ右にずれ、次の縦中横「12」の後ろの文字が「1２」の列まで戻って重なる
+    const ctx = lay("あ1２いうえおか12きく", { direction: "tbRl", dividesByWords: true }, { height: 40 });
+    expect(lines(ctx)).toEqual(["あ1２い", "うえおか", "12きく"]);
+    const columns = ["あ", "う", "き"].map((char) => runOf(ctx, char).run.frame.x);
+    expect(columns[0] - columns[1]).toBeCloseTo(10);
+    expect(columns[1] - columns[2]).toBeCloseTo(10);
+    for (const run of ctx.runs) {
+      if (ctx.isTateChuYoko(run)) continue;
+      expect(run.frame.x).toBeCloseTo(columns[run.line]);
+    }
+    // 縦中横「12」は、同じ列の文字と中心がそろう
+    const one = runOf(ctx, "1", 1).run;
+    const two = runOf(ctx, "2").run;
+    expect(ctx.isTateChuYoko(one)).toBe(true);
+    expect((one.frame.x + two.frame.x + two.frame.width) / 2).toBeCloseTo(columns[2] + 5);
+  });
+
+  it("keeps a mixed-width two-digit token inside the area with every textAlign", () => {
+    const options = { direction: "tbRl", dividesByWords: true } as const;
+    for (const textAlign of ["leading", "center", "trailing", "justify"] as const) {
+      // 「1２」を 1 文字ぶん多く数えると、行末寄せで列が領域の上にはみ出して、全部の文字が隠れる
+      const ctx = lay("あ1２いう", { ...options, textAlign }, { height: 20 });
+      expect(lines(ctx)).toEqual(["あ", "1２", "いう"]);
+      // 「２1」の「1」を数え落とすと、中央寄せ・行末寄せで 1 列目が領域の下にはみ出して切り詰めになる
+      const reversed = lay("あ２1い", { ...options, textAlign }, { height: 30 });
+      expect(lines(reversed)).toEqual(["あ２1", "い"]);
+      for (const [layout, height] of [[ctx, 20], [reversed, 30]] as const) {
+        expect(layout.isTruncated).toBe(false);
+        expect(shown(layout)).toBe(layout.text);
+        for (const run of layout.runs) {
+          expect(run.frame.y).toBeGreaterThanOrEqual(-1e-9);
+          expect(run.frame.y + run.frame.height).toBeLessThanOrEqual(height + 1e-9);
+        }
+      }
+    }
+    // 行末寄せでは、列の最後の文字が下端にそろう
+    const trailing = lay("あ２1い", { ...options, textAlign: "trailing" }, { height: 30 });
+    const digit = runOf(trailing, "1").run;
+    expect(runOf(trailing, "あ").run.frame.y).toBeCloseTo(4.775);
+    expect(digit.frame.y + digit.frame.height).toBeCloseTo(30);
+    const center = lay("あ２1い", { ...options, textAlign: "center" }, { height: 30 });
+    expect(runOf(center, "あ").run.frame.y).toBeCloseTo(2.3875);
+  });
+
+  it("sets every run of a token the same way, whatever the column height and textAlign", () => {
+    // 半角と全角の数字（とローマ数字）が混ざった 2 桁のトークンを、1 文字ぶんから 6 文字ぶんまでの高さで組む
+    const texts = ["あ1２いう", "あ２1い", "1２々）", "２1、3４。5６」", "第1２回と２1世紀の12月", "Ⅱ２ー！」２Ⅱゝ々。"];
+    for (const text of texts) {
+      for (let height = 10; height <= 60; height += 2.5) {
+        for (const textAlign of ["leading", "center", "trailing", "justify"] as const) {
+          const ctx = lay(text, { direction: "tbRl", dividesByWords: true, textAlign }, { height });
+          // 縦中横かどうかは、トークンの中でそろう
+          for (const token of ctx.tokens) {
+            for (let i = token.start; i < token.end; i++) {
+              expect(ctx.isTateChuYoko(ctx.runs[i])).toBe(ctx.isTateChuYokoToken(token));
+            }
+          }
+          // 縦中横でない文字は、列ごとに同じ横の位置に並び、列は 1 文字ぶんずつ左へ進む
+          const right = ctx.runs[0].frame.x;
+          for (const run of ctx.runs) {
+            if (!ctx.isTateChuYoko(run)) expect(run.frame.x).toBeCloseTo(right - run.line * 10);
+          }
+          // 高さだけを決めた領域では、どの文字も列に収まる（切り詰めない）
+          expect(ctx.isTruncated).toBe(false);
+        }
+      }
+    }
+  });
+
   it("justifies columns", () => {
     const ctx = lay("あいうえおか", { direction: "tbRl", textAlign: "justify" }, { height: 45 });
     expect(lines(ctx)).toEqual(["あいうえ", "おか"]);

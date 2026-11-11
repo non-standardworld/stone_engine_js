@@ -171,6 +171,7 @@ export interface StoneSVGProps extends Omit<SVGProps<SVGSVGElement>, "width" | "
   /**
    * 縦書きの和文の縦組み用グリフの描き方。"feature" は font-feature-settings の vert、"emulated" は横組みのグリフの
    * 回転と移動で代用する（vert が効かない Safari などの WebKit 用）。既定 "auto"（ブラウザに合わせる）。
+   * 半角カナは、どちらでも回して描く。
    */
   verticalForms?: VerticalFormsOption;
   /** リンク・文字色・線を付ける範囲（元のテキストの位置で指定する）。 */

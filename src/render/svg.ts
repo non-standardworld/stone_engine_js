@@ -5,6 +5,7 @@ Swift 版は CoreText でグリフを直接描いていたが、Web ではブラ
 1 文字ごとに <tspan x y> を置き、縦書きの欧文は rotate="90"、和文は font-feature-settings の vert で縦組み用グリフに置き換える。
 縦書きの和文の引用符「“」「”」「‘」「’」は、fwid で全角の字形にしてから vert で縦組み用グリフ（〝〟の形）にする。
 vert が効かない Safari などの WebKit では、縦組み用グリフを横組みのグリフの回転と移動で描く（render/vertical.ts）。
+縦書きの半角カナは、どのブラウザでも vert を使わずに rotate="90" で横倒しに描く（同じく render/vertical.ts）。
 リンク・文字色の範囲（render/spans.ts）は、その範囲の文字の <tspan> を <a> / <tspan> で囲み、線は <text> の後ろに矩形で描く。
 太字・斜体の文字は run のフォント ID が変種（fonts.ts）になっているので、フォント設定ごとのグループ分けでその太さ・スタイルの <tspan> になる。
 
@@ -33,7 +34,13 @@ import { HORIZONTAL_ELLIPSIS, isSpaceChar, VERTICAL_ELLIPSIS } from "../punctuat
 import { fontIdWithScript } from "../fonts.js";
 import type { Run, Size } from "../types.js";
 import { columnLeft, decorationRects, spanStacks, type StoneSpan } from "./spans.js";
-import { resolveVerticalForms, verticalGlyphTransform, type VerticalForms, type VerticalFormsOption } from "./vertical.js";
+import {
+  isHalfwidthKana,
+  resolveVerticalForms,
+  verticalGlyphTransform,
+  type VerticalForms,
+  type VerticalFormsOption,
+} from "./vertical.js";
 
 /** 縦組み用グリフを有効にする CSS 値。 */
 export const VERTICAL_FEATURE_SETTINGS = '"vert" 1, "vrt2" 1';
@@ -158,7 +165,11 @@ function glyphElement(ctx: StoneContext, runId: number, text: string, placement:
 
 const NO_SPANS: readonly number[] = [];
 
-/** run をそのフォント・位置で描く描画要素にする。text は実際に描く文字列。 */
+/**
+ * run をそのフォント・位置で描く描画要素にする。text は実際に描く文字列。
+ * 縦書きの和文は、forms が "feature" なら vert（vertical）、"emulated" なら回転と移動で描く。半角カナは、"feature" でも vert を
+ * 使わずに回して描く（vrt2 の横倒しの字形は横組みの送り幅が 1em で、「ｶﾞ」の濁点が右隣の列に出る。render/vertical.ts）。
+ */
 function toGlyphElement(ctx: StoneContext, runId: number, text: string, forms: VerticalForms): GlyphElement {
   const run = ctx.runs[runId];
   const placement: GlyphPlacement = {
@@ -169,7 +180,7 @@ function toGlyphElement(ctx: StoneContext, runId: number, text: string, forms: V
     vertical: ctx.usesVerticalGlyph(run),
     fullWidth: ctx.usesFullWidthGlyph(run),
   };
-  if (forms === "emulated" && placement.vertical) emulateVerticalGlyph(ctx, run, placement);
+  if (placement.vertical && (forms === "emulated" || isHalfwidthKana(run.char))) emulateVerticalGlyph(ctx, run, placement);
   return glyphElement(ctx, runId, text, placement);
 }
 
@@ -177,6 +188,8 @@ function toGlyphElement(ctx: StoneContext, runId: number, text: string, forms: V
  * vert を使わずに、縦組み用グリフを横組みのグリフの回転と移動で描くよう placement を書き換える（render/vertical.ts）。
  * 回転は em ボックス（グリフ原点の上 ascent から 1em 四方）の中心で回す。rotate 属性はグリフ原点を中心に回すので、
  * 原点を (x + 1em − ascent, y − ascent) に移してから 90 度回すと、回した字形が元の em ボックスにちょうど重なる。
+ * 半角カナは横組みの送り幅が 0.5em なので、回した字形は em ボックス（列の 1em のます）の上半分に来る。濁点・半濁点の付いた
+ * 「ｶﾞ」「ﾊﾟ」（1 つの run に 2 文字）は、rotate 属性が書記素のまとまりごと回すので、下半分に濁点・半濁点が来る。
  */
 function emulateVerticalGlyph(ctx: StoneContext, run: Run, placement: GlyphPlacement): void {
   placement.vertical = false;
@@ -381,6 +394,7 @@ export interface SvgStringOptions {
   /**
    * 縦書きの和文の縦組み用グリフの描き方。"feature" は font-feature-settings の vert、"emulated" は横組みのグリフの
    * 回転と移動で代用する（vert が効かない Safari などの WebKit 用）。既定 "auto"（ブラウザに合わせる）。
+   * 半角カナは、どちらでも回して描く。
    */
   verticalForms?: VerticalFormsOption;
   /** リンク・文字色・線を付ける範囲（元のテキストの位置で指定する）。 */

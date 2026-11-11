@@ -196,7 +196,7 @@ export const PROPS: PropRow[] = [
   { name: "textIndent / textIndentEachLine", def: "0 / true", desc: "段落の 1 行目の字下げ（px）。テキストの先頭の行と改行の直後の行の行頭を下げ、折り返して始まる行は下げない。負の値なら 1 行目が領域の手前に出る。textIndentEachLine を false にすると、CSS の text-indent の既定と同じく、テキストの先頭の行だけを下げる。punctuationMode が stone / half なら、字下げした行頭の始め括弧は字下げの後ろで半角に詰める" },
   { name: "textAlign", def: '"leading"', desc: "leading / center / trailing / justify。justify は最終行と改行で終わる行を除いて行末をそろえる。余白は文字間に均等に配り、欧文の単語の途中と「……」「——」の間は空けない" },
   { name: "directionAlign", def: '"start"', desc: "行送り方向の寄せ（横書きなら上下、縦書きなら左右）" },
-  { name: "punctuationMode", def: '"stone"', desc: "約物の扱い。whole 常に全角、half 常に半角、stone 前後関係で判断" },
+  { name: "punctuationMode", def: '"stone"', desc: "約物の扱い。whole 常に全角、half 常に半角、stone 前後関係で判断（行頭の始め括弧は、どの行でも半角に詰める）。half と stone は、折り返すかどうかを詰めたあとの長さで判断する" },
   { name: "kinsoku", def: "true", desc: "行頭・行末禁則（「ー」や小書きの仮名も行頭に置かない強い禁則）と分離禁止（「……」「——」の途中で改行しない）" },
   { name: "dividesByWords", def: "true", desc: "単語の途中で改行しない" },
   { name: "allowsTateChuYoko", def: "true", desc: "縦書きで 2 桁以下の数字を正体にする（縦中横）" },

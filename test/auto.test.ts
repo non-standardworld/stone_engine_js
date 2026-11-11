@@ -6,9 +6,11 @@ import {
   blockSkipReason,
   directionOf,
   inlineSkipReason,
+  letterSpacingOf,
   mergeAutoOptions,
   optionsFromStyle,
   textAlignOf,
+  textIndentOf,
 } from "../src/auto/style.js";
 import { CollapsedText, whiteSpaceModeOf, wrapsLines, type WhiteSpaceMode } from "../src/auto/whitespace.js";
 
@@ -167,6 +169,17 @@ describe("blockSkipReason", () => {
     expect(blockSkipReason({ ...BLOCK, wordBreak: "break-all", whiteSpace: "nowrap" })).toBeNull();
   });
 
+  it("accepts letter-spacing and text-indent in px, which the engine sets as options", () => {
+    const reason = (style: Partial<AutoComputedStyle>) => blockSkipReason({ ...BLOCK, ...style });
+    expect(reason({ letterSpacing: "2.04px" })).toBeNull();
+    expect(reason({ letterSpacing: "-0.5px" })).toBeNull();
+    expect(reason({ letterSpacing: "0px" })).toBeNull();
+    expect(reason({ textIndent: "17px" })).toBeNull();
+    expect(reason({ textIndent: "-17px" })).toBeNull();
+    expect(reason({ textIndent: "17px each-line" })).toBeNull();
+    expect(reason({ letterSpacing: "2.04px", textIndent: "17px", writingMode: "vertical-rl" })).toBeNull();
+  });
+
   it("works without the properties that older browsers do not have", () => {
     const {
       textOrientation: _o,
@@ -203,10 +216,14 @@ describe("blockSkipReason", () => {
     expect(reason({ textWrapStyle: "balance" })).toBe("text-wrap");
     expect(reason({ textOverflow: "ellipsis" })).toBe("text-overflow");
     expect(reason({ columnCount: "2" })).toBe("columns");
-    expect(reason({ letterSpacing: "0.8px" })).toBe("letter-spacing");
-    expect(reason({ letterSpacing: "0px" })).toBeNull();
+    // px にならない字間（パーセント）は渡せない
+    expect(reason({ letterSpacing: "10%" })).toBe("letter-spacing");
     expect(reason({ wordSpacing: "2px" })).toBe("word-spacing");
-    expect(reason({ textIndent: "16px" })).toBe("text-indent");
+    // パーセントの字下げ（幅で変わる）と、1 行目以外を下げる hanging は組めない
+    expect(reason({ textIndent: "10%" })).toBe("text-indent");
+    expect(reason({ textIndent: "calc(10% + 5px)" })).toBe("text-indent");
+    expect(reason({ textIndent: "16px hanging" })).toBe("text-indent");
+    expect(reason({ textIndent: "16px hanging each-line" })).toBe("text-indent");
     expect(reason({ textTransform: "uppercase" })).toBe("text-transform");
     expect(reason({ fontFeatureSettings: '"palt"' })).toBe("font-feature");
     expect(reason({ fontVariantEastAsian: "proportional-width" })).toBe("font-feature");
@@ -243,6 +260,22 @@ describe("inlineSkipReason", () => {
     expect(reason({ borderBottomWidth: "1px" })).toBe("inline-box");
     expect(reason({ opacity: "0.5" })).toBe("text-effect");
     expect(reason({ letterSpacing: "1px" })).toBe("letter-spacing");
+  });
+
+  it("accepts the letter-spacing of the block, and names an inline element that changes it", () => {
+    // 字間はブロックの値 1 つで組むので、インライン要素がブロックと同じ字間（継承した値）なら組める
+    const tracked = { ...BLOCK, letterSpacing: "2px" };
+    const inTracked = (style: Partial<AutoComputedStyle>) =>
+      inlineSkipReason(computed({ ...tracked, display: "inline" }, style), tracked, tracked);
+    expect(inTracked({})).toBeNull();
+    expect(inTracked({ letterSpacing: "3px" })).toBe("letter-spacing");
+    expect(inTracked({ letterSpacing: "normal" })).toBe("letter-spacing");
+    // normal と 0px は同じ字間
+    expect(reason({ letterSpacing: "0px" })).toBeNull();
+    // text-indent はブロックの 1 行目に入るもので、インライン要素の値は効かない
+    expect(reason({ textIndent: "10%" })).toBeNull();
+    const indented = { ...BLOCK, textIndent: "16px" };
+    expect(inlineSkipReason(computed({ ...indented, display: "inline" }, {}), indented, indented)).toBeNull();
   });
 
   it("compares white-space with the parent element", () => {
@@ -290,6 +323,35 @@ describe("optionsFromStyle", () => {
       descent: 0.12,
     });
     expect(optionsFromStyle({ ...BLOCK, writingMode: "vertical-rl" }, 32).direction).toBe("tbRl");
+  });
+
+  it("takes the letter spacing and the first-line indent from CSS", () => {
+    const plain = optionsFromStyle(BLOCK, 28.8);
+    expect(plain.letterSpacing).toBe(0);
+    expect(plain.textIndent).toBe(0);
+    // CSS の text-indent は、each-line を付けない限り最初の行だけに入る（<br> の後ろの行は字下げしない）
+    expect(plain.textIndentEachLine).toBe(false);
+    const options = optionsFromStyle({ ...BLOCK, letterSpacing: "1.92px", textIndent: "16px" }, 28.8);
+    expect(options.letterSpacing).toBe(1.92);
+    expect(options.textIndent).toBe(16);
+    expect(options.textIndentEachLine).toBe(false);
+    const each = optionsFromStyle({ ...BLOCK, letterSpacing: "-0.5px", textIndent: "-16px each-line" }, 28.8);
+    expect(each.letterSpacing).toBe(-0.5);
+    expect(each.textIndent).toBe(-16);
+    expect(each.textIndentEachLine).toBe(true);
+  });
+
+  it("reads px lengths and rejects what cannot be passed to the engine", () => {
+    expect(letterSpacingOf({ letterSpacing: "normal" })).toBe(0);
+    expect(letterSpacingOf({ letterSpacing: "2.04px" })).toBe(2.04);
+    expect(letterSpacingOf({ letterSpacing: "1e-7px" })).toBe(1e-7);
+    expect(letterSpacingOf({ letterSpacing: "10%" })).toBeNull();
+    expect(letterSpacingOf({ letterSpacing: "0.1em" })).toBeNull();
+    expect(textIndentOf({ textIndent: "0px" })).toEqual({ length: 0, eachLine: false });
+    expect(textIndentOf({ textIndent: "17px each-line" })).toEqual({ length: 17, eachLine: true });
+    expect(textIndentOf({ textIndent: "17px hanging" })).toBeNull();
+    expect(textIndentOf({ textIndent: "10%" })).toBeNull();
+    expect(textIndentOf({ textIndent: "calc(10% + 5px)" })).toBeNull();
   });
 
   it("maps text-align keywords", () => {
@@ -432,6 +494,18 @@ describe("readAutoSource", () => {
     expect(reason(["  \n ", el("SPAN", {}, [" "])])).toBe("empty");
     // 隠した画像は無いものとして扱う
     expect(reason(["図 ", el("IMG", { display: "none" }, [])])).toBeNull();
+  });
+
+  it("reads a block with letter-spacing whose inline elements inherit it, but not one that changes it", () => {
+    const tracked = { ...INLINE, letterSpacing: "2px" };
+    const strong = el("STRONG", { fontWeight: "700" }, ["太字"], {}, tracked);
+    const same = read(["字間のある", strong], { letterSpacing: "2px" });
+    expect(same.ok && [same.source.text, same.source.spans]).toEqual([
+      "字間のある太字",
+      [{ start: 5, end: 7, fontWeight: "700" }],
+    ]);
+    const wide = el("SPAN", { letterSpacing: "6px" }, ["広い"], {}, tracked);
+    expect(read(["字間のある", wide], { letterSpacing: "2px" })).toEqual({ ok: false, reason: "letter-spacing" });
   });
 
   it("does not set elements whose ::before or ::after adds content", () => {

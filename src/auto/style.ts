@@ -36,8 +36,10 @@ export type AutoSkipReason =
   | "columns"
   /** フロートが回り込んでいる。 */
   | "float"
+  /** ブロックと字間の違うインライン要素。px にならない letter-spacing（パーセントなど）。 */
   | "letter-spacing"
   | "word-spacing"
+  /** px にならない text-indent（パーセントなど）と、text-indent の hanging。 */
   | "text-indent"
   | "text-transform"
   /** font-feature-settings、font-variant-east-asian、font-stretch、font-variation-settings。 */
@@ -145,6 +147,46 @@ function differsFrom(value: string | undefined, initial: string): boolean {
   return value !== undefined && value !== "" && value !== initial;
 }
 
+/** px の長さの計算値（"2.04px"、"-17px"）。 */
+const PX_LENGTH_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?px$/i;
+
+/** 計算値が px の長さなら、その数値。それ以外（パーセント、calc() など）は null。 */
+function pxLengthOf(value: string): number | null {
+  if (!PX_LENGTH_RE.test(value)) return null;
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * CSS の letter-spacing の計算値を字間（px）にする。normal（か、値のない未対応のブラウザ）は 0。
+ * px にならない値（パーセントなど）は、エンジンに渡せないので null。
+ */
+export function letterSpacingOf(style: Pick<AutoStyle, "letterSpacing">): number | null {
+  const value = (style.letterSpacing ?? "").trim();
+  if (value === "" || value === "normal") return 0;
+  return pxLengthOf(value);
+}
+
+/** CSS の text-indent から決まる字下げ。 */
+export interface AutoTextIndent {
+  /** 字下げ（px）。 */
+  length: number;
+  /** 強制改行（<br> など）の直後の行にも入れるかどうか（text-indent の each-line）。 */
+  eachLine: boolean;
+}
+
+/**
+ * CSS の text-indent の計算値を字下げにする。値がなければ 0。
+ * px にならない値（パーセントは幅が変わるたびに変わる）と、1 行目以外を下げる hanging は、エンジンに渡せないので null。
+ */
+export function textIndentOf(style: Pick<AutoStyle, "textIndent">): AutoTextIndent | null {
+  const [first = "", ...keywords] = (style.textIndent ?? "").trim().split(/\s+/);
+  if (first === "") return { length: 0, eachLine: false };
+  const length = pxLengthOf(first);
+  if (length === null || keywords.some((keyword) => keyword !== "each-line")) return null;
+  return { length, eachLine: keywords.length > 0 };
+}
+
 /** 色の計算値が完全な透明かどうか。アルファは rgba(r, g, b, a) の 4 つ目か、rgb(r g b / a) や color(... / a) の「/」の後ろ。 */
 function isTransparent(color: string): boolean {
   if (color === "transparent") return true;
@@ -175,11 +217,18 @@ function decorationSkipReason(style: AutoStyle): AutoSkipReason | null {
   return null;
 }
 
-/** エンジンが再現できない文字まわりの CSS が効いていれば、その理由。ブロックにもインライン要素にも使う。 */
-function textSkipReason(style: AutoStyle): AutoSkipReason | null {
-  if (!isZeroLength(style.letterSpacing)) return "letter-spacing";
+/**
+ * エンジンが再現できない文字まわりの CSS が効いていれば、その理由。ブロックにもインライン要素にも使う。
+ * block は、style がインライン要素のものなら、その要素のあるブロックのスタイル。style がブロック自身のものなら null。
+ * 字間（letter-spacing）と 1 行目の字下げ（text-indent）は、ブロックの値を組版オプションにして組む（optionsFromStyle）。
+ */
+function textSkipReason(style: AutoStyle, block: AutoStyle | null): AutoSkipReason | null {
+  // 字間はブロックの値 1 つで組むので、インライン要素だけ字間が違うものは組めない
+  const letterSpacing = letterSpacingOf(style);
+  if (letterSpacing === null || (block !== null && letterSpacing !== letterSpacingOf(block))) return "letter-spacing";
   if (!isZeroLength(style.wordSpacing)) return "word-spacing";
-  if (!isZeroLength(style.textIndent)) return "text-indent";
+  // 字下げはブロックの 1 行目に入るもので、インライン要素の値は効かない
+  if (block === null && textIndentOf(style) === null) return "text-indent";
   if (style.textTransform !== "none") return "text-transform";
   if (style.fontFeatureSettings !== "normal") return "font-feature";
   if (differsFrom(style.fontVariantEastAsian, "normal")) return "font-feature";
@@ -205,7 +254,7 @@ export function blockSkipReason(style: AutoStyle): AutoSkipReason | null {
   if (style.textWrapStyle === "balance") return "text-wrap";
   if (differsFrom(style.textOverflow, "clip")) return "text-overflow";
   if (differsFrom(style.columnCount, "auto") || differsFrom(style.columnWidth, "auto")) return "columns";
-  return textSkipReason(style);
+  return textSkipReason(style, null);
 }
 
 /** インライン要素に、背景・枠・余白（行の中で場所を取るか、文字の後ろに描かれるもの）があるかどうか。 */
@@ -243,7 +292,7 @@ export function inlineSkipReason(style: AutoStyle, parent: AutoStyle, block: Aut
   if (style.verticalAlign !== "baseline") return "vertical-align";
   if (hasInlineBox(style)) return "inline-box";
   if (style.visibility !== block.visibility || style.opacity !== "1") return "text-effect";
-  return textSkipReason(style);
+  return textSkipReason(style, block);
 }
 
 /** CSS の text-align を textAlign にする（左から右の書字方向の前提）。 */
@@ -269,15 +318,21 @@ export function textAlignOf(value: string): TextAlign {
  * ブロックの計算済みスタイルから組版オプションを作る。lineHeight は行送り（px）。
  * ページの見た目を変えないように、和文も欧文も CSS の font-family をそのまま使い、欧文のスケールは 1 にする。
  * 欧文も和文と同じ仮想ボディに置く（同じ font-family なので、欧文フォントのメトリクスで行の位置が変わらないようにする）。
+ * 字間（letter-spacing）と 1 行目の字下げ（text-indent）は、px の計算値をそのまま渡す。CSS の text-indent は、each-line を
+ * 付けない限りブロックの最初の行だけに入り、<br> の後ろの行には入らないので、textIndentEachLine もそれに合わせる。
  */
 export function optionsFromStyle(style: AutoStyle, lineHeight: number): StoneOptions {
   const fontSize = parseFloat(style.fontSize);
   const font: FontSpec = { family: style.fontFamily, weight: style.fontWeight, style: fontStyleOf(style.fontStyle) };
+  const indent = textIndentOf(style);
   return {
     direction: directionOf(style) ?? "lrTb",
     fontSize,
     lineHeightScale: fontSize > 0 && lineHeight > 0 ? lineHeight / fontSize : 1,
     textAlign: textAlignOf(style.textAlign),
+    letterSpacing: letterSpacingOf(style) ?? 0,
+    textIndent: indent?.length ?? 0,
+    textIndentEachLine: indent?.eachLine ?? false,
     fonts: {
       japanese: { ...font },
       latin: { ...font, scale: 1, ascent: JAPANESE_ASCENT_RATIO, descent: JAPANESE_DESCENT_RATIO },

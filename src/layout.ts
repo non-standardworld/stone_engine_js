@@ -49,6 +49,25 @@ Swift 版との意図的な差異（いずれも元実装の明らかな不具�
   終わり括弧「}」「⦆」を行頭に置かない。
   （元実装の集合は「？!‼」「。.」のように ASCII の「!」「.」を 2 回ずつ書いていて全角の「！」「．」がなく、「，」「：」「；」「・」も
   なかったため、これらが行頭に来た。小書きの仮名と「々」は行頭禁則なのに「ー」「ゝ」「ゞ」は行頭に来るという混ざった状態だった。）
+
+Swift 版にない追加（これも意図的な差異。オプションを指定しない限り、挙動は変わらない）:
+- 字間（letterSpacing、px）。CSS の letter-spacing と同じく各文字の後ろに足し、run の矩形（frame）の行方向の長さに含める。
+  行末の文字の後ろにも足すので、折り返しの判定・行揃え・均等配置・renderedSize は、行末の字間も含めて計算する
+  （Chromium の CSS と同じ。中央寄せと行末寄せでは、行末側に字間 1 つぶんの空きが残る）。
+  縦中横の途中（横に並ぶ数字の間）と、分離禁止文字の間（「……」「——」）には足さない。縦中横はまとまりの後ろに 1 回だけ足す。
+  約物の半角詰め（punctuationMode）の幅は、字間を含めない送り幅の 0.5 倍で計算し、その後ろに字間を足す。
+  切り詰めも同じ矩形（後ろの字間を含む）で、領域に収まるかどうかを見る。折り返した行は行末の字間まで収まっているので、
+  変わるのは 1 トークンだけの行で、文字とその後ろの字間が入らないほど狭い領域では、その行から後ろを隠す。
+  省略記号は置き換える文字の矩形の先頭に置き、省略記号そのものの幅が収まるかどうかを見る（省略記号の後ろの字間は見ない）。
+  負の値で詰められるが、文字の矩形の長さは 0 より短くしない。
+- 字下げ（textIndent、px）。段落の 1 行目（テキストの先頭の行と、改行の run の直後の行）の行頭に空きを入れる。折り返しで始まる行には
+  入れない。字下げした行は、そのぶん短い行として折り返し・行揃え・均等配置を行う（CSS の text-indent と同じ。中央寄せでは字下げの
+  半分だけ行末側に寄り、行末寄せでは位置が変わらない）。renderedSize には字下げを含める。
+  textIndentEachLine が false なら、CSS の text-indent の既定と同じく、テキストの先頭の行だけに入れる（<br> の後ろの行に入れない）。
+  行頭の始め括弧の半角詰め（stone / half）は、字下げした行でも、字下げの後ろを行頭として同じように行う。字下げが 1em なら「 の字面が
+  1em の位置から始まり、折り返しの行頭では天付きになる（JLREQ「行頭の始め括弧類の配置方法」の、改行行頭の字下げは全角アキ、
+  折り返し行頭は天付きとする方法）。whole では全角のまま置くので、字面は字下げ + 0.5em の位置になる。
+  負の値なら 1 行目が領域の手前（横書きは左、縦書きは上）に出る（ぶら下げ）。手前に出た分は、切り詰めの対象にしない。
 */
 
 import type { StoneContext } from "./context.js";
@@ -110,6 +129,43 @@ export class Layouter {
   }
 
   //--------------------------------------------------------------//
+  // Letter spacing and text indent
+  //--------------------------------------------------------------//
+
+  /**
+   * 行方向の長さが extent の run に、その後ろの字間を足した長さ。字間が無ければ extent をそのまま返す。
+   * 負の字間で詰めるときも、0 より短くはしない（矩形の大きさが負にならず、後ろの文字が手前に戻らないように）。
+   */
+  private spaced(runId: number, extent: number): number {
+    const spacing = this.ctx.letterSpacingAfter(runId);
+    return spacing === 0 ? extent : Math.max(0, extent + spacing);
+  }
+
+  /**
+   * トークン（run の範囲）の行方向の長さ。送り幅に字間を足したもので、折り返しの判定に使う（約物の詰めは見ない）。
+   * 縦中横は横に並べた 1 つのまとまりなので、字間は後ろに 1 回だけ足す。
+   */
+  private extentOfToken(token: Token): number {
+    const ctx = this.ctx;
+    if (ctx.adjustLetterSpacing === 0) return ctx.advanceOfToken(token);
+    if (ctx.isTateChuYokoToken(token)) return this.spaced(token.end - 1, ctx.advanceOfToken(token));
+    let total = 0;
+    for (let i = token.start; i < token.end; i++) total += this.spaced(i, ctx.runs[i].advance);
+    return total;
+  }
+
+  /**
+   * run ID が lineStart の run から始まる行の字下げ（px）。字下げは段落の 1 行目（テキストの先頭の行と、改行の直後の行）にだけ入れ、
+   * 折り返しで始まる行には入れない。textIndentEachLine が false なら、テキストの先頭の行だけに入れる。
+   */
+  private indentOfLine(lineStart: number): number {
+    const ctx = this.ctx;
+    const indent = ctx.adjustTextIndent;
+    if (indent === 0 || lineStart === 0) return indent;
+    return ctx.textIndentEachLine && ctx.runs[lineStart - 1].isNewline ? indent : 0;
+  }
+
+  //--------------------------------------------------------------//
   // Run
   //--------------------------------------------------------------//
 
@@ -167,11 +223,12 @@ export class Layouter {
         break;
     }
 
+    // 約物の詰めは字間を含めない送り幅で決め、その後ろに字間を足す
     run.position = { x: posX, y: this.y };
     run.frame = {
       x: this.x,
       y: this.y - fm.ascent(run.fontId, size),
-      width,
+      width: this.spaced(runId, width),
       height: size * fm.fontScale(run.fontId),
     };
   }
@@ -195,7 +252,7 @@ export class Layouter {
 
     if (ctx.isClockwise(run)) {
       run.position = { x: this.x + fm.descent(run.fontId, size), y: this.y };
-      run.frame = { x: this.x, y: this.y, width: size, height: run.advance };
+      run.frame = { x: this.x, y: this.y, width: size, height: this.spaced(runId, run.advance) };
       return;
     }
 
@@ -232,8 +289,9 @@ export class Layouter {
         break;
     }
 
+    // 字間は行方向（高さ）に足す。縦中横の数字は横に並べるので、幅（数字の間）には足さず、どの数字の矩形もまとまりの後ろの字間を含む
     run.position = { x: this.x, y: posY };
-    run.frame = { x: this.x, y: this.y, width: run.advance, height };
+    run.frame = { x: this.x, y: this.y, width: run.advance, height: this.spaced(runId, height) };
   }
 
   /** 方向に応じて run を配置する。 */
@@ -250,18 +308,20 @@ export class Layouter {
     const ctx = this.ctx;
     const runs = ctx.runs;
     if (ctx.punctuationMode === "stone") {
-      // 行頭の始め括弧を半角にして行全体を詰める（前行末との処理で既に半角なら何もしない）
-      const first = runs[this.lineStartRunId];
+      // 行頭の始め括弧を半角にして行全体を詰める（前行末との処理で既に半角なら何もしない）。
+      // 字下げした行でも、字下げの後ろを行頭として同じように詰める（字下げが 1em なら「 の字面が 1em の位置から始まる）
+      const start = this.lineStartRunId;
+      const first = runs[start];
       if (
         first &&
         !first.isNewline &&
         first.punctuation === "secondHalf" &&
-        first.frame.width >= first.advance - EPS
+        first.frame.width >= this.spaced(start, first.advance) - EPS
       ) {
         const dx = first.advance * 0.5;
         first.position = { x: first.position.x - dx, y: first.position.y };
-        first.frame = { ...first.frame, width: first.advance * 0.5 };
-        for (let i = this.lineStartRunId + 1; i <= this.runId && i < runs.length; i++) {
+        first.frame = { ...first.frame, width: this.spaced(start, first.advance * 0.5) };
+        for (let i = start + 1; i <= this.runId && i < runs.length; i++) {
           moveRun(runs[i], -dx, 0);
         }
       }
@@ -269,11 +329,12 @@ export class Layouter {
       // 行末の句読点・終わり括弧を半角にする
       const last = runs[this.runId];
       if (last && !last.isNewline && last.punctuation === "firstHalf") {
-        last.frame = { ...last.frame, width: last.advance * 0.5 };
+        last.frame = { ...last.frame, width: this.spaced(this.runId, last.advance * 0.5) };
       }
     }
 
-    this.x = 0;
+    // 次の行が段落の 1 行目（改行の直後）なら、字下げから始める
+    this.x = this.indentOfLine(this.runId + 1);
     this.y += ctx.adjustLineHeight;
   }
 
@@ -283,29 +344,32 @@ export class Layouter {
     const runs = ctx.runs;
     const size = ctx.adjustFontSize;
     if (ctx.punctuationMode === "stone") {
-      const first = runs[this.lineStartRunId];
+      // 横書きと同じく、字下げした列でも字下げの後ろを行頭として始め括弧を詰める
+      const start = this.lineStartRunId;
+      const first = runs[start];
       if (
         first &&
         !first.isNewline &&
         first.punctuation === "secondHalf" &&
-        first.frame.height >= size - EPS
+        first.frame.height >= this.spaced(start, size) - EPS
       ) {
         const dy = size * 0.5;
         first.position = { x: first.position.x, y: first.position.y - dy };
-        first.frame = { ...first.frame, height: size * 0.5 };
-        for (let i = this.lineStartRunId + 1; i <= this.runId && i < runs.length; i++) {
+        first.frame = { ...first.frame, height: this.spaced(start, size * 0.5) };
+        for (let i = start + 1; i <= this.runId && i < runs.length; i++) {
           moveRun(runs[i], 0, -dy);
         }
       }
 
       const last = runs[this.runId];
       if (last && !last.isNewline && last.punctuation === "firstHalf") {
-        last.frame = { ...last.frame, height: size * 0.5 };
+        last.frame = { ...last.frame, height: this.spaced(this.runId, size * 0.5) };
       }
     }
 
     this.x -= ctx.adjustLineHeight;
-    this.y = 0;
+    // 次の列が段落の 1 行目（改行の直後）なら、字下げから始める
+    this.y = this.indentOfLine(this.runId + 1);
   }
 
   /** 禁則処理を行ってから改行する。 */
@@ -335,9 +399,9 @@ export class Layouter {
     if (this.runId + 1 < runs.length) {
       const next = runs[this.runId + 1];
       if (run.tokenId !== next.tokenId) {
-        // 次のトークン全体が収まるか
-        if (this.x + ctx.advanceOfToken(ctx.tokens[next.tokenId]) > this.maxX) this.goNextLine();
-      } else if (this.x + next.advance > this.maxX) {
+        // 次のトークン全体が収まるか（字間は行末の文字の後ろのぶんも含めて見る。CSS と同じ）
+        if (this.x + this.extentOfToken(ctx.tokens[next.tokenId]) > this.maxX) this.goNextLine();
+      } else if (this.x + this.spaced(this.runId + 1, next.advance) > this.maxX) {
         this.goNextLine();
       }
     }
@@ -372,8 +436,8 @@ export class Layouter {
     if (this.runId + 1 < runs.length) {
       const next = runs[this.runId + 1];
       if (run.tokenId !== next.tokenId) {
-        if (this.y + ctx.advanceOfToken(ctx.tokens[next.tokenId]) > this.maxY) this.goNextLine();
-      } else if (this.y + ctx.adjustFontSize > this.maxY) {
+        if (this.y + this.extentOfToken(ctx.tokens[next.tokenId]) > this.maxY) this.goNextLine();
+      } else if (this.y + this.spaced(this.runId + 1, ctx.adjustFontSize) > this.maxY) {
         this.goNextLine();
       }
     }
@@ -422,7 +486,7 @@ export class Layouter {
       if (endRun && nextStartRun && isInseparablePair(endRun.char, nextStartRun.char)) {
         const sequence = this.inseparableSequence(this.runId);
         const lineLength = ctx.direction === "lrTb" ? this.maxX : this.maxY;
-        if (sequence.start > this.lineStartRunId && ctx.advanceOfToken(sequence) <= lineLength + EPS) {
+        if (sequence.start > this.lineStartRunId && this.extentOfToken(sequence) <= lineLength + EPS) {
           this.runId = sequence.start;
           decreaseRunId();
           continue;
@@ -562,9 +626,14 @@ export class Layouter {
     const runs = ctx.runs;
     const W = ctx.renderSize.width;
     const H = ctx.renderSize.height;
+    const horizontal = ctx.direction === "lrTb";
+    // 負の字下げ（ぶら下げ）で 1 行目が領域の手前に出る分は、はみ出しとみなさない
+    const lead = Math.min(0, ctx.adjustTextIndent);
+    const minX = horizontal ? lead : 0;
+    const minY = horizontal ? 0 : lead;
 
     const contains = (f: Rect): boolean =>
-      f.x >= -EPS && f.y >= -EPS && f.x + f.width <= W + EPS && f.y + f.height <= H + EPS;
+      f.x >= minX - EPS && f.y >= minY - EPS && f.x + f.width <= W + EPS && f.y + f.height <= H + EPS;
 
     // 領域からはみ出す最初の run を含む行の先頭（ここから後ろを隠す）
     let end = runs.findIndex((run) => !contains(run.frame));
@@ -639,7 +708,8 @@ export class Layouter {
 
     let total = 0;
     for (let i = start; i < end; i++) total += runs[i].frame.width;
-    const diff = W - total;
+    // 字下げした行は、字下げのぶん短い行として寄せる（run は字下げの位置から並んでいる）
+    const diff = W - this.indentOfLine(start) - total;
 
     switch (ctx.textAlign) {
       case "leading":
@@ -769,7 +839,8 @@ export class Layouter {
         total += run.frame.height;
       }
     }
-    const diff = H - total;
+    // 字下げした列は、字下げのぶん短い列として寄せる
+    const diff = H - this.indentOfLine(start) - total;
 
     switch (ctx.textAlign) {
       case "leading":
@@ -812,14 +883,23 @@ export class Layouter {
   /** 縦書きの描画サイズを更新する。 */
   private updateRenderedSizeTbRl(): void {
     const ctx = this.ctx;
+    const runs = ctx.runs;
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
-    for (const run of ctx.runs) {
+    // 字下げした列の始まりは、字下げの手前（字下げを含めた高さにする。負の字下げなら、その列は短くなる）
+    let indent = 0;
+    let lineTop = 0;
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      if (i === 0 || runs[i - 1].line !== run.line) {
+        indent = this.indentOfLine(i);
+        lineTop = run.frame.y - indent;
+      }
       minX = Math.min(minX, run.frame.x);
       maxX = Math.max(maxX, run.frame.x + run.frame.width);
-      minY = Math.min(minY, run.frame.y);
+      minY = Math.min(minY, indent === 0 ? run.frame.y : lineTop);
       maxY = Math.max(maxY, run.frame.y + run.frame.height);
     }
     ctx.renderedSize = {
@@ -857,6 +937,9 @@ export class Layouter {
     this.tmpX = null;
     this.runId = 0;
     this.lineStartRunId = 0;
+    // テキストの先頭の行は、字下げから始める
+    if (ctx.direction === "lrTb") this.x = this.indentOfLine(0);
+    else this.y = this.indentOfLine(0);
 
     while (this.runId < ctx.runs.length) {
       this.layoutRun();

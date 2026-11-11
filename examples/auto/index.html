@@ -54,6 +54,17 @@
         </p>
         <blockquote>引用（blockquote）の中に直接書いた文章も、段落と同じように組まれます。</blockquote>
 
+        <h2>字間と字下げ</h2>
+        <p class="tracked">
+          字間（letter-spacing）を空けた段落も、CSS と同じ字間で組まれます。English words の中も同じだけ空けます。
+        </p>
+        <p class="indent">
+          1 行目の字下げ（text-indent）も、CSS と同じ位置に組まれます。下げるのは段落の最初の行だけで、折り返して始まる行は行の頭から始まります。
+        </p>
+        <p class="indent">
+          「始め括弧で始まる段落」は、字下げの後ろで括弧を半角に詰めるので、括弧が 1 文字ぶん下がった位置から始まります。
+        </p>
+
         <h2>内容で幅が決まる見出し</h2>
         <div class="row">
           <h3>フレックスの中の「見出し」</h3>
@@ -69,7 +80,6 @@
         </p>
         <p><ruby>振<rt>ふ</rt></ruby>り<ruby>仮名<rt>がな</rt></ruby>（ルビ）のある段落は、読みが落ちてしまうので組みません。</p>
         <p><code>code</code> のように、フォントや大きさの違う文字がある段落も組みません。</p>
-        <p class="tracked">字間（letter-spacing）を空けた段落も、今は組みません。</p>
         <ul>
           <li>箇条書きの項目（li）には Shadow DOM を付けられないので、対象にしていません。</li>
         </ul>

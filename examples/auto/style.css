@@ -96,6 +96,10 @@ code {
   letter-spacing: 0.12em;
 }
 
+.indent {
+  text-indent: 1em;
+}
+
 /* 幅が内容で決まる見出し（フレックスの子） */
 .row {
   display: flex;

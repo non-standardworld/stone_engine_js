@@ -121,13 +121,31 @@ describe("SVG output", () => {
     expect(svgString(ctx)).toContain(`<tspan x="10" y="8.8" data-run="${open.id}">…</tspan>`);
   });
 
-  it("resets the writing mode on the root, so that SVG does not lay the text out vertically inside a vertical element", () => {
-    // writing-mode は継承される。縦書きの要素の中に置かれると SVG の <text> が自分で文字を縦に並べ、<tspan x y> の原点が
-    // 文字の上端の中央になって位置がずれるので、横書きでも縦書きでも、ルートで横書きに戻す
+  it("resets the inherited text properties on the root, so that the page's CSS cannot move or change the glyphs", () => {
+    // どれも継承されるプロパティ。ページ側の指定が SVG のテキストに届くと、文字の位置・向き・字形がレイアウトと食い違う
     for (const ctx of [lay("日本語 Hello"), lay("日本語 Hello", { direction: "tbRl" })]) {
-      const style = svgString(ctx).match(/^<svg [^>]* style="([^"]*)"/)?.[1] ?? "";
-      expect(style.split(";")).toContain("writing-mode:horizontal-tb");
+      const style = (svgString(ctx).match(/^<svg [^>]* style="([^"]*)"/)?.[1] ?? "").split(";");
+      // 縦書きの要素の中に置かれると、SVG の <text> が自分で文字を縦に並べ、<tspan x y> の原点が文字の上端の中央になる
+      expect(style).toContain("writing-mode:horizontal-tb");
+      // 原点の意味を変えるもの（direction: rtl では文字が x の左側に置かれる）
+      expect(style).toEqual(expect.arrayContaining(["direction:ltr", "text-anchor:start", "dominant-baseline:auto"]));
+      // 測ったものと違う文字・字形・送り幅で描かせるもの（合字とカーニングは、1 文字ずつ置くので使わない）
+      expect(style).toEqual(
+        expect.arrayContaining([
+          "text-transform:none",
+          "font-variant:none",
+          "font-kerning:none",
+          "font-feature-settings:normal",
+          "font-variation-settings:normal",
+          "font-optical-sizing:auto",
+          "font-stretch:normal",
+          "font-size-adjust:none",
+        ]),
+      );
     }
+    // エンジンが使う font-feature-settings（縦組み用グリフ）は、文字のまとまりの <tspan> がルートの normal を上書きする
+    const vertical = svgString(lay("日本語", { direction: "tbRl" }), { verticalForms: "feature" });
+    expect(vertical).toContain('style="font-feature-settings:&quot;vert&quot; 1, &quot;vrt2&quot; 1"');
   });
 });
 

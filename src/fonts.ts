@@ -33,6 +33,18 @@ export const DEFAULT_FONTS: Record<Script, FontSpec> = {
 export const JAPANESE_ASCENT_RATIO = 0.88;
 export const JAPANESE_DESCENT_RATIO = 0.12;
 
+/**
+ * 絵文字のディセントの既定値。和文の仮想ボディと同じ比にする（フォントから測った値は使わない）。
+ * ディセントを使うのは縦書きだけで、正立の文字のベースラインを「ますの下端からディセントだけ上」に置く（layout.ts の layoutRunTbRl）。
+ * 絵文字フォントのメトリクスのディセントは行の高さのための値で、絵の箱の下端ではない。Apple Color Emoji はディセントが 0.3125em
+ * （24px 未満ではメトリクスごと大きくなり、17px で約 0.35em、12px で約 0.42em）、絵の箱はベースラインの下 0.125em から上 0.875em で、
+ * 和文の仮想ボディとほぼ同じ。測った値で置くと、絵文字がますから 0.19〜0.29em 列の手前に出て、前の文字に重なる。
+ * 文字種が絵文字の記号（「★」「♪」など）は、絵文字フォントに字形が無ければ代替フォント（和文フォントなど）で描かれるので、
+ * 絵文字フォントのメトリクスで置く理由がもともと無い。
+ * アセントは測った値のまま（横書きの矩形の位置に使う。横書きは変えない）。
+ */
+export const EMOJI_DESCENT_RATIO = JAPANESE_DESCENT_RATIO;
+
 /** オプションのフォント指定を SCRIPTS 順の ResolvedFont 配列に解決する。 */
 export function resolveFonts(fonts?: StoneOptions["fonts"]): ResolvedFont[] {
   return SCRIPTS.map((script, id) => {
@@ -48,7 +60,10 @@ export function resolveFonts(fonts?: StoneOptions["fonts"]): ResolvedFont[] {
       style: spec?.style ?? base.style ?? "normal",
     };
     const ascent = spec?.ascent ?? base.ascent ?? (script === "japanese" ? JAPANESE_ASCENT_RATIO : undefined);
-    const descent = spec?.descent ?? base.descent ?? (script === "japanese" ? JAPANESE_DESCENT_RATIO : undefined);
+    const descent =
+      spec?.descent ??
+      base.descent ??
+      (script === "japanese" ? JAPANESE_DESCENT_RATIO : script === "emoji" ? EMOJI_DESCENT_RATIO : undefined);
     if (ascent !== undefined) resolved.ascent = ascent;
     if (descent !== undefined) resolved.descent = descent;
     return resolved;

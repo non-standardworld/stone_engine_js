@@ -155,11 +155,12 @@ describe("SVG output", () => {
     const wideEmoji = { direction: "tbRl", fonts: { emoji: { family: "", scale: 1.24 } } } as const;
     const emoji = svgString(lay("😀あ", wideEmoji, { height: 10 }));
     expect(emoji).toContain('width="20" height="10" viewBox="0 0 20 10"');
-    expect(emoji).toContain('<tspan x="10" y="6.9" data-run="0">😀</tspan>');
+    // 絵文字のベースラインは、スケールを変えた和文と同じく、ますの下端から 0.12em × スケール上（10 − 12.4 × 0.12 = 8.512）
+    expect(emoji).toContain('<tspan x="10" y="8.51" data-run="0">😀</tspan>');
     expect(emoji).toContain('<tspan x="0" y="8.8" data-run="1">あ</tspan>');
     // 幅が 2 列ちょうどの領域でも、どの列も表示する（「😀」と省略記号だけになった）
     const exact = svgString(lay("😀と書く", wideEmoji, { height: 20, width: 20 }));
-    expect(exact).toContain('<tspan x="10" y="6.9" data-run="0">😀</tspan>');
+    expect(exact).toContain('<tspan x="10" y="8.51" data-run="0">😀</tspan>');
     expect(exact).toContain('<tspan x="10" y="18.8" data-run="1">と</tspan><tspan x="0" y="8.8" data-run="2">書</tspan><tspan x="0" y="18.8" data-run="3">く</tspan>');
   });
 

@@ -42,7 +42,14 @@ const BLOCK: AutoComputedStyle = {
   fontStretch: "100%",
   fontFeatureSettings: "normal",
   fontVariantEastAsian: "normal",
+  fontVariantCaps: "normal",
+  fontVariantNumeric: "normal",
+  fontVariantAlternates: "normal",
+  fontVariantPosition: "normal",
+  fontVariantEmoji: "normal",
   fontVariationSettings: "normal",
+  fontSizeAdjust: "none",
+  fontOpticalSizing: "auto",
   letterSpacing: "normal",
   wordSpacing: "0px",
   textIndent: "0px",
@@ -186,6 +193,13 @@ describe("blockSkipReason", () => {
       textCombineUpright: _c,
       textWrapStyle: _w,
       fontVariationSettings: _v,
+      fontVariantCaps: _caps,
+      fontVariantNumeric: _numeric,
+      fontVariantAlternates: _alternates,
+      fontVariantPosition: _position,
+      fontVariantEmoji: _emoji,
+      fontSizeAdjust: _adjust,
+      fontOpticalSizing: _optical,
       webkitTextFillColor: _f,
       textDecorationThickness: _t,
       textUnderlineOffset: _u,
@@ -228,6 +242,16 @@ describe("blockSkipReason", () => {
     expect(reason({ fontFeatureSettings: '"palt"' })).toBe("font-feature");
     expect(reason({ fontVariantEastAsian: "proportional-width" })).toBe("font-feature");
     expect(reason({ fontStretch: "75%" })).toBe("font-feature");
+    // 組版結果の <svg> は、字形や文字の大きさを変える指定を初期値に戻して描く。組むと CSS の見た目と変わるので見送る
+    expect(reason({ fontVariantCaps: "small-caps" })).toBe("font-feature");
+    expect(reason({ fontVariantNumeric: "tabular-nums" })).toBe("font-feature");
+    expect(reason({ fontVariantNumeric: "lining-nums proportional-nums" })).toBe("font-feature");
+    expect(reason({ fontVariantAlternates: "historical-forms" })).toBe("font-feature");
+    expect(reason({ fontVariantPosition: "sub" })).toBe("font-feature");
+    expect(reason({ fontVariantEmoji: "text" })).toBe("font-feature");
+    expect(reason({ fontVariationSettings: '"wght" 600' })).toBe("font-feature");
+    expect(reason({ fontSizeAdjust: "0.5" })).toBe("font-feature");
+    expect(reason({ fontOpticalSizing: "none" })).toBe("font-feature");
     expect(reason({ wordBreak: "keep-all" })).toBe("word-break");
     expect(reason({ textShadow: "rgb(0, 0, 0) 1px 1px 0px" })).toBe("text-effect");
     expect(reason({ webkitTextFillColor: "rgba(0, 0, 0, 0)" })).toBe("text-effect");
@@ -260,6 +284,10 @@ describe("inlineSkipReason", () => {
     expect(reason({ borderBottomWidth: "1px" })).toBe("inline-box");
     expect(reason({ opacity: "0.5" })).toBe("text-effect");
     expect(reason({ letterSpacing: "1px" })).toBe("letter-spacing");
+    // 一部の文字だけ字形を変える指定（等幅の数字、スモールキャップ）も、組むと初期値の字形になる
+    expect(reason({ fontVariantNumeric: "tabular-nums" })).toBe("font-feature");
+    expect(reason({ fontVariantCaps: "all-small-caps" })).toBe("font-feature");
+    expect(reason({ fontSizeAdjust: "0.55" })).toBe("font-feature");
   });
 
   it("accepts the letter-spacing of the block, and names an inline element that changes it", () => {

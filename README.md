@@ -18,6 +18,8 @@ Swift 版は CoreText でグリフを取り出し、`STLayout` が 1 文字ず�
 
 という構成です。フォントファイルを読み込む必要はなく、CSS で使える Web フォント（Google Fonts など）やシステムフォントがそのまま使えます。レイアウト結果は 1 文字ごとの位置・矩形・行番号として取り出せるので、Swift 版と同じく「内部構造を直接触れる」エンジンになっています。
 
+ページの CSS のうち、継承されると SVG の文字の位置・向き・字形が変わるもの（`writing-mode`、`direction`、`text-transform`、`font-feature-settings`、`font-variant-*`、`font-stretch`、`font-size-adjust`、`font-variation-settings` など）は、組版結果の `<svg>` で初期値に戻しています。文字の位置はエンジンが 1 文字ずつ決め、送り幅はページの CSS が効かない Canvas で測っているので、SVG にだけ指定が届くと、描いた文字が測った結果と食い違うためです。たとえば `body { font-feature-settings: "palt" }` と指定しているページでも、`<StoneText>` や `mountStoneText` で組んだ文字には効きません（約物の詰めはエンジンが行います）。使いたい指定は `<svg>` に付け直せます。React では `svgProps={{ style: { fontFeatureSettings: '"zero"' } }}`、`mountStoneText` / `svgString` では `.stone-svg { font-feature-settings: "zero" !important; }` のように書きます。ただし、送り幅が変わる指定は、位置が測った幅のままなので文字の間隔がずれます。エンジンが `font-feature-settings` を指定している文字（Chromium などで縦組み用グリフに置き換えている縦書きの和文）には効きません。
+
 ## インストール
 
 ```bash
@@ -211,7 +213,7 @@ import "@non-standardworld/stone-engine.js/auto";
 エンジンが再現できないものを含む要素は、何もせずに元の表示のまま残します（見た目が変わるくらいなら何もしない、という方針です）。
 
 - ルビ、画像、フォームの部品、`<code>` や `<sup>` のようにフォントや大きさの違う文字、背景や枠のあるインライン要素を含むもの
-- `text-transform`、`word-spacing`、`font-feature-settings`（`palt` など）、`text-wrap: balance`、`text-shadow`、段組みなどを使っているもの、`::before` / `::after` で行の中に内容を足しているもの
+- `text-transform`、`word-spacing`、`font-feature-settings`（`palt` など）、`font-variant-caps` / `font-variant-numeric` など（スモールキャップ、等幅の数字のように字形を変える指定）、`font-size-adjust`、`text-wrap: balance`、`text-shadow`、段組みなどを使っているもの、`::before` / `::after` で行の中に内容を足しているもの
 - 段落の中の一部の要素だけ `letter-spacing` を変えているもの、`text-indent` をパーセントで指定しているものと `hanging` を付けているもの（`letter-spacing` と `text-indent` は、段落全体に px や em で指定したものを組みます）
 - 下線・打ち消し線の種類（点線や波線）、太さ、下線の位置（`text-underline-offset`）を指定しているもの、上線を引いているもの（エンジンは実線を、自分で決めた太さと位置に描くため）
 - フロートが回り込んでいるもの

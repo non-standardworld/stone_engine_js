@@ -42,7 +42,10 @@ export type AutoSkipReason =
   /** px にならない text-indent（パーセントなど）と、text-indent の hanging。 */
   | "text-indent"
   | "text-transform"
-  /** font-feature-settings、font-variant-east-asian、font-stretch、font-variation-settings。 */
+  /**
+   * 字形・送り幅・文字の大きさを変える指定。font-feature-settings、font-variant-*（east-asian / caps / numeric / alternates /
+   * position / emoji）、font-stretch、font-variation-settings、font-size-adjust、font-optical-sizing。
+   */
   | "font-feature"
   /** word-break: keep-all。 */
   | "word-break"
@@ -111,7 +114,14 @@ export interface AutoStyle {
   fontStretch?: string;
   fontFeatureSettings: string;
   fontVariantEastAsian?: string;
+  fontVariantCaps?: string;
+  fontVariantNumeric?: string;
+  fontVariantAlternates?: string;
+  fontVariantPosition?: string;
+  fontVariantEmoji?: string;
   fontVariationSettings?: string;
+  fontSizeAdjust?: string;
+  fontOpticalSizing?: string;
   letterSpacing: string;
   wordSpacing: string;
   textIndent: string;
@@ -151,6 +161,25 @@ function isZeroLength(value: string | undefined): boolean {
 function differsFrom(value: string | undefined, initial: string): boolean {
   return value !== undefined && value !== "" && value !== initial;
 }
+
+/**
+ * 字形・送り幅・文字の大きさを変える font まわりの CSS と、その初期値（font-feature-settings と font-stretch は別に見る）。
+ * 組版結果の <svg> は、これらを初期値に戻して描く（render/svg.ts の SVG_TEXT_STYLE。送り幅を測る canvas にはページの CSS が
+ * 効かないので、SVG にだけ届くと、描いた文字が測った幅と食い違うため）。初期値でない要素は、組むと CSS の見た目
+ * （スモールキャップ、等幅の数字、大きさの補正など）と変わるので、組まない。
+ * 合字とカーニング（font-variant-ligatures、font-kerning）は、1 文字ずつ置くエンジンでは初期値でも掛からないので、ここでは見ない。
+ */
+const FONT_SHAPE_INITIALS: readonly (readonly [keyof AutoStyle, string])[] = [
+  ["fontVariantEastAsian", "normal"],
+  ["fontVariantCaps", "normal"],
+  ["fontVariantNumeric", "normal"],
+  ["fontVariantAlternates", "normal"],
+  ["fontVariantPosition", "normal"],
+  ["fontVariantEmoji", "normal"],
+  ["fontVariationSettings", "normal"],
+  ["fontSizeAdjust", "none"],
+  ["fontOpticalSizing", "auto"],
+];
 
 /** px の長さの計算値（"2.04px"、"-17px"）。 */
 const PX_LENGTH_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?px$/i;
@@ -236,8 +265,7 @@ function textSkipReason(style: AutoStyle, block: AutoStyle | null): AutoSkipReas
   if (block === null && textIndentOf(style) === null) return "text-indent";
   if (style.textTransform !== "none") return "text-transform";
   if (style.fontFeatureSettings !== "normal") return "font-feature";
-  if (differsFrom(style.fontVariantEastAsian, "normal")) return "font-feature";
-  if (differsFrom(style.fontVariationSettings, "normal")) return "font-feature";
+  if (FONT_SHAPE_INITIALS.some(([name, initial]) => differsFrom(style[name], initial))) return "font-feature";
   if (differsFrom(style.fontStretch, "normal") && style.fontStretch !== "100%") return "font-feature";
   if (style.wordBreak === "keep-all") return "word-break";
   if (style.textShadow !== "none") return "text-effect";

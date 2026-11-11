@@ -145,6 +145,24 @@ describe("SVG output", () => {
     expect(right).toContain('<tspan x="0" y="8.8" data-run="1">あ</tspan>');
   });
 
+  it("sizes the SVG of vertical text by its column boxes when the rightmost column holds only half-width kana or a wide emoji", () => {
+    // 幅を決めない領域。半角カナ（5.5px）は列の左端から描く。SVG の幅は、矩形までの 16px（15.5px の切り上げ）ではなく、
+    // 列の 1em の箱の並びの幅（2 列ぶんの 20px）にする。文字の位置は SVG の左端から変わらない
+    const kana = svgString(lay("ｱあ", { direction: "tbRl" }, { height: 10 }));
+    expect(kana).toContain('width="20" height="10" viewBox="0 0 20 10"');
+    expect(kana).toContain('<tspan x="10" y="8.8" data-run="0">ｱ</tspan><tspan x="0" y="8.8" data-run="1">あ</tspan>');
+    // 送り幅が 1em より広い絵文字（12.4px）も列の左端から描く。箱の右にはみ出す送り幅は、SVG の幅に数えない（23px だった）
+    const wideEmoji = { direction: "tbRl", fonts: { emoji: { family: "", scale: 1.24 } } } as const;
+    const emoji = svgString(lay("😀あ", wideEmoji, { height: 10 }));
+    expect(emoji).toContain('width="20" height="10" viewBox="0 0 20 10"');
+    expect(emoji).toContain('<tspan x="10" y="6.9" data-run="0">😀</tspan>');
+    expect(emoji).toContain('<tspan x="0" y="8.8" data-run="1">あ</tspan>');
+    // 幅が 2 列ちょうどの領域でも、どの列も表示する（「😀」と省略記号だけになった）
+    const exact = svgString(lay("😀と書く", wideEmoji, { height: 20, width: 20 }));
+    expect(exact).toContain('<tspan x="10" y="6.9" data-run="0">😀</tspan>');
+    expect(exact).toContain('<tspan x="10" y="18.8" data-run="1">と</tspan><tspan x="0" y="8.8" data-run="2">書</tspan><tspan x="0" y="18.8" data-run="3">く</tspan>');
+  });
+
   it("draws the ellipsis from the start of the frame of a compressed opening bracket", () => {
     // 半角にした「は原点を左にずらして描くが、省略記号は矩形の先頭から描く（前の文字に重ねない）
     const ctx = lay("あ「\nい", { punctuationMode: "half" }, { height: 10 });

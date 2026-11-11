@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { svgSize, svgString } from "../src/index.js";
+import {
+  FixedMeasurer,
+  layoutText,
+  resolveFonts,
+  svgSize,
+  svgString,
+  type FontMeasurer,
+  type StoneContext,
+} from "../src/index.js";
 import { lay, lines, runOf, shown } from "./helpers.js";
 
 describe("layout tbRl", () => {
@@ -637,6 +645,172 @@ describe("truncation tbRl", () => {
     expect(shown(ctx)).toBe("あいうえ\nか");
     const first = ctx.runs[0].frame;
     expect(first.x + first.width).toBeCloseTo(22); // 1 列目は右端にそろう
+  });
+});
+
+describe("the position of an emoji within its cell of a vertical column", () => {
+  // 縦書きの正立の文字は、ベースラインを「ますの下端からディセントだけ上」に置く。絵文字のディセントは、フォントから測った値
+  // （FixedMeasurer は 0.25em、Apple Color Emoji は 0.31〜0.42em）ではなく、和文の仮想ボディと同じ 0.12em にする。
+  // 絵文字の絵の箱はベースラインの下 0.125em から上 0.875em にあるので、測った値で置くと、ますから列の手前に出て前の文字に重なる
+  const vertical = { direction: "tbRl" } as const;
+  /** 測った値で置いていたときと同じ位置になる指定（FixedMeasurer のディセント 0.25em）。 */
+  const measured = { direction: "tbRl", fonts: { emoji: { family: "", descent: 0.25 } } } as const;
+  /** ますの上端から run のベースラインまでの長さ（px）。 */
+  const baseline = (ctx: StoneContext, char: string, nth = 0): number => {
+    const { run } = runOf(ctx, char, nth);
+    return run.position.y - run.frame.y;
+  };
+
+  it("puts an emoji on the baseline of the Japanese characters, 0.12em above the bottom of its cell", () => {
+    const ctx = lay("あ😀い", vertical);
+    // 矩形は 1em のますのまま。ベースラインは、ますの上端から 8.8px（測った値のままだと 7.5px で、絵文字が 1.3px 上に出ていた）
+    expect(runOf(ctx, "😀").run.frame).toEqual({ x: 0, y: 10, width: 10, height: 10 });
+    expect(runOf(ctx, "😀").run.position).toEqual({ x: 0, y: 18.8 });
+    expect(baseline(ctx, "😀")).toBe(baseline(ctx, "あ"));
+    expect(baseline(ctx, "😀")).toBe(baseline(ctx, "い"));
+    // 列の先頭でも同じ（幅と高さを決めた領域では、ますから上に出たぶんが切り取られていた）
+    const head = lay("😀あ", vertical, { width: 10, height: 20 });
+    expect(runOf(head, "😀").run.position).toEqual({ x: 0, y: 8.8 });
+    expect(svgString(head)).toContain('<tspan x="0" y="8.8" data-run="0">😀</tspan>');
+    // 国旗や ZWJ でつないだ絵文字（1 つの run）も同じ
+    for (const emoji of ["🇯🇵", "👨‍👩‍👧", "❤️", "👍🏽"]) {
+      const sequence = lay(`あ${emoji}`, vertical);
+      expect(sequence.runs).toHaveLength(2);
+      expect(sequence.runs[1].position).toEqual({ x: 0, y: 18.8 });
+    }
+  });
+
+  it("does the same for symbols that are set with the emoji fonts", () => {
+    // 「★」「☆」「♪」は文字種が絵文字。絵文字フォントに字形が無ければ代替フォント（和文フォントなど）で描かれるので、
+    // 絵文字フォントのディセントで置くと、和文の字形なのに上にずれた
+    const ctx = lay("星★と☆♪", vertical);
+    for (const symbol of ["★", "☆", "♪"]) {
+      const { run } = runOf(ctx, symbol);
+      expect(ctx.fontManager.script(run.fontId)).toBe("emoji");
+      expect(ctx.isClockwise(run)).toBe(false);
+      expect(baseline(ctx, symbol)).toBeCloseTo(8.8, 10);
+    }
+  });
+
+  it("does not depend on the metrics that the measurer returns for the emoji fonts", () => {
+    // Apple Color Emoji を 17px で測ったときの値（アセント 21px、ディセント 6px、送り幅 21px）を返す measurer
+    const fixed = new FixedMeasurer();
+    const appleLike: FontMeasurer = {
+      advance: (font, size, char) => (font.script === "emoji" ? (size * 21) / 17 : fixed.advance(font, size, char)),
+      metrics: (font, size) =>
+        font.script === "emoji" ? { ascent: (size * 21) / 17, descent: (size * 6) / 17 } : fixed.metrics(font, size),
+    };
+    const ctx = layoutText("顔😀", { direction: "tbRl", fontSize: 17, dividesByWords: false }, appleLike);
+    expect(ctx.fontManager.descent(runOf(ctx, "😀").run.fontId, 17)).toBeCloseTo(17 * 0.12, 10);
+    expect(ctx.fontManager.ascent(runOf(ctx, "😀").run.fontId, 17)).toBeCloseTo(21, 10); // アセントは測った値のまま
+    // ますの上端から 17 × 0.88 = 14.96px（測った値で置くと 17 − 6 = 11px で、3.96px 上に出ていた）
+    expect(baseline(ctx, "😀")).toBeCloseTo(14.96, 10);
+    expect(baseline(ctx, "😀")).toBeCloseTo(baseline(ctx, "顔"), 10);
+    // 文字のフォントの既定値: 和文は仮想ボディ（0.88 / 0.12）、絵文字はディセントだけ和文と同じ、欧文はどちらも測った値
+    const [latin, japanese, emoji] = resolveFonts();
+    expect([latin.ascent, latin.descent]).toEqual([undefined, undefined]);
+    expect([japanese.ascent, japanese.descent]).toEqual([0.88, 0.12]);
+    expect([emoji.ascent, emoji.descent]).toEqual([undefined, 0.12]);
+  });
+
+  it("aligns a scaled emoji like a scaled Japanese character, the bottom of its body on the bottom of the cell", () => {
+    // スケールを変えた和文は、仮想ボディ（スケール倍）の下端がますの下端にそろう。絵文字も同じ（0.12em × スケールだけ上）
+    for (const [scale, expected] of [
+      [0.8, 9.04],
+      [1.2, 8.56],
+      [1.24, 8.512],
+    ] as const) {
+      const emoji = lay("😀", { ...vertical, fonts: { emoji: { family: "", scale } } });
+      const japanese = lay("あ", { ...vertical, fonts: { japanese: { family: "", scale } } });
+      expect(baseline(emoji, "😀")).toBeCloseTo(expected, 10);
+      expect(baseline(emoji, "😀")).toBeCloseTo(baseline(japanese, "あ"), 10);
+      // 測った値（0.25em × スケール）だと、スケールが大きいほど上に出ていた（1.2 倍で 7px）
+      expect(baseline(emoji, "😀") - (10 - 2.5 * scale)).toBeCloseTo(1.3 * scale, 10);
+    }
+    // 縮小したときも、縮小後の大きさで同じ比になる
+    const shrunk = lay("あ😀い", { ...vertical, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 }, { width: 10, height: 15 });
+    expect(shrunk.adjustFontScale).toBeLessThan(1);
+    expect(shrunk.isTruncated).toBe(false);
+    expect(baseline(shrunk, "😀")).toBeCloseTo(shrunk.adjustFontSize * 0.88, 10);
+    expect(baseline(shrunk, "😀")).toBeCloseTo(baseline(shrunk, "あ"), 10);
+  });
+
+  it("takes fonts.emoji.descent when it is given", () => {
+    // 絵文字フォントに合わせて、列の中の位置を調整できる。大きくすると列の手前（上）に動く
+    expect(baseline(lay("😀", measured), "😀")).toBe(7.5);
+    expect(baseline(lay("😀", { ...vertical, fonts: { emoji: { family: "", descent: 0 } } }), "😀")).toBe(10);
+    expect(baseline(lay("😀", { ...vertical, fonts: { emoji: { family: "", scale: 1.2, descent: 0.25 } } }), "😀")).toBe(7);
+    // family だけを指定しても、ディセントは既定値（0.12）のまま
+    const family = lay("😀", { ...vertical, fonts: { emoji: { family: '"Noto Color Emoji"' } } });
+    expect(baseline(family, "😀")).toBeCloseTo(8.8, 10);
+  });
+
+  it("moves only the drawing position of emoji: frames, lines, sizes and hit testing stay the same", () => {
+    // 測った値で置く指定（measured）と比べる。変わるのは、絵文字のフォントの run の position.y だけ
+    // （絵文字の後ろの空白と改行も絵文字のフォントの run だが、描かれないので見た目は変わらない）
+    const texts = ["あ😀い", "😀", "😀😀\n★あ", "今日は😀、晴れ🎉です。Stone 12月7日", "「😀」と（★）。"];
+    const variants = [
+      {},
+      { textAlign: "center" },
+      { textAlign: "justify" },
+      { directionAlign: "end" },
+      { punctuationMode: "half" },
+      { letterSpacing: 1.5, textIndent: 10 },
+      { fonts: { emoji: { family: "", scale: 1.24 } } },
+    ] as const;
+    const sizes = [{}, { height: 35 }, { height: 35, width: 30 }, { height: 20, width: 20 }];
+    let moved = 0;
+    for (const text of texts) {
+      for (const variant of variants) {
+        for (const size of sizes) {
+          const scale = "fonts" in variant ? variant.fonts.emoji.scale : 1;
+          const before = lay(text, { ...variant, direction: "tbRl", fonts: { emoji: { family: "", scale, descent: 0.25 } } }, size);
+          const after = lay(text, { ...variant, direction: "tbRl" }, size);
+          expect(after.lineCount).toBe(before.lineCount);
+          expect(after.renderedSize).toEqual(before.renderedSize);
+          expect(after.isTruncated).toBe(before.isTruncated);
+          expect(svgSize(after)).toEqual(svgSize(before));
+          after.runs.forEach((run, i) => {
+            const old = before.runs[i];
+            expect(run.frame).toEqual(old.frame);
+            expect([run.line, run.visibility, run.advance]).toEqual([old.line, old.visibility, old.advance]);
+            expect(run.position.x).toBe(old.position.x);
+            if (after.fontManager.script(run.fontId) === "emoji") {
+              // 0.25em − 0.12em（× スケール）だけ下へ
+              expect(run.position.y - old.position.y).toBeCloseTo(1.3 * scale * after.adjustFontScale, 10);
+              moved += 1;
+            } else {
+              expect(run.position.y).toBe(old.position.y);
+            }
+          });
+          for (let line = 0; line < after.lineCount; line++) expect(after.firstRunFrame(line)).toEqual(before.firstRunFrame(line));
+          for (const point of [{ x: 0, y: 0 }, { x: 5, y: 12 }, { x: 15, y: 30 }, { x: 25, y: 8 }]) {
+            expect(after.closestRunIndex(point)).toBe(before.closestRunIndex(point));
+          }
+        }
+      }
+    }
+    expect(moved).toBeGreaterThan(200);
+  });
+
+  it("does not change horizontal text, tate-chu-yoko digits or rotated Latin", () => {
+    // 横書きは行のベースラインを共有するだけで、ディセントを使わない。絵文字のディセントを指定しても、何も変わらない
+    const text = "今日は😀、星★と♪。Stone 7";
+    const horizontal = lay(text, {}, { width: 80 });
+    expect(runOf(horizontal, "😀").run.position.y).toBe(runOf(horizontal, "今").run.position.y);
+    // 矩形は、今までどおりベースラインからアセントの測った値（0.9em）だけ上から
+    expect(runOf(horizontal, "😀").run.frame.y).toBeCloseTo(runOf(horizontal, "😀").run.position.y - 9, 10);
+    const withDescent = lay(text, { fonts: { emoji: { family: "", descent: 0.25 } } }, { width: 80 });
+    expect(horizontal.runs.map((run) => [run.position, run.frame])).toEqual(withDescent.runs.map((run) => [run.position, run.frame]));
+    // 縦中横の数字と回転する欧文は、欧文フォントの測ったディセント（0.25em × 0.95）のまま
+    const ctx = lay("7aあ", vertical);
+    expect(ctx.isTateChuYoko(runOf(ctx, "7").run)).toBe(true);
+    expect(baseline(ctx, "7")).toBe(10 - 2.375);
+    expect(runOf(ctx, "a").run.position.x).toBe(runOf(ctx, "a").run.frame.x + 2.375);
+    // 縦書きの省略記号は和文フォントの「︙」なので、絵文字の run が省略記号になっても位置は変わらない
+    const truncated = lay("あ😀い", vertical, { height: 20, width: 10 });
+    expect(runOf(truncated, "😀").run.visibility).toBe("ellipsis");
+    expect(svgString(truncated)).toContain('<tspan x="0" y="18.8" data-run="1">︙</tspan>');
   });
 });
 

@@ -3,7 +3,7 @@ context.ts — レイアウトの設定と結果を保持するコンテキス�
 */
 
 import { FontManager, resolveFonts } from "./fonts.js";
-import { isBlankChar, isQuotationMark } from "./punctuation.js";
+import { isBlankChar, isInseparablePair, isQuotationMark } from "./punctuation.js";
 import type {
   Direction,
   DirectionAlign,
@@ -33,7 +33,16 @@ export const DEFAULT_OPTIONS: Required<Omit<StoneOptions, "fonts">> = {
   punctuationMode: "stone",
   kinsoku: true,
   dividesByWords: true,
+  letterSpacing: 0,
+  textIndent: 0,
+  textIndentEachLine: true,
 };
+
+/** 長さのオプション（px）。数値でない値や非有限の値は 0 にする。 */
+function finiteLength(value: number | undefined, fallback: number): number {
+  const n = value ?? fallback;
+  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+}
 
 export interface LineRange {
   line: number;
@@ -83,6 +92,12 @@ export class StoneContext {
   allowsTateChuYoko: boolean;
   adjustsFontSizeToFitWidth: boolean;
   minimumScaleFactor: number;
+  /** 字間（縮小前の px）。各文字の後ろに足す。 */
+  letterSpacing: number;
+  /** 段落の 1 行目の字下げ（縮小前の px）。 */
+  textIndent: number;
+  /** 改行の直後の行にも字下げを入れるかどうか。false ならテキストの先頭の行だけ。 */
+  textIndentEachLine: boolean;
 
   /** adjustsFontSizeToFitWidth で決まった縮小率。 */
   adjustFontScale = 1;
@@ -109,6 +124,9 @@ export class StoneContext {
     this.adjustsFontSizeToFitWidth =
       options.adjustsFontSizeToFitWidth ?? DEFAULT_OPTIONS.adjustsFontSizeToFitWidth;
     this.minimumScaleFactor = options.minimumScaleFactor ?? DEFAULT_OPTIONS.minimumScaleFactor;
+    this.letterSpacing = finiteLength(options.letterSpacing, DEFAULT_OPTIONS.letterSpacing);
+    this.textIndent = finiteLength(options.textIndent, DEFAULT_OPTIONS.textIndent);
+    this.textIndentEachLine = options.textIndentEachLine ?? DEFAULT_OPTIONS.textIndentEachLine;
     this.punctuationMode = options.punctuationMode ?? DEFAULT_OPTIONS.punctuationMode;
     this.kinsoku = options.kinsoku ?? DEFAULT_OPTIONS.kinsoku;
     this.dividesByWords = options.dividesByWords ?? DEFAULT_OPTIONS.dividesByWords;
@@ -141,6 +159,16 @@ export class StoneContext {
     return this.adjustFontSize * (this.lineHeightScale - 1);
   }
 
+  /** 縮小適用後の字間。フォントと同じ率で縮める。 */
+  get adjustLetterSpacing(): number {
+    return this.letterSpacing * this.adjustFontScale;
+  }
+
+  /** 縮小適用後の字下げ。フォントと同じ率で縮める。 */
+  get adjustTextIndent(): number {
+    return this.textIndent * this.adjustFontScale;
+  }
+
   /** 元のテキスト。 */
   get text(): string {
     let s = "";
@@ -152,11 +180,29 @@ export class StoneContext {
   // Advance
   //--------------------------------------------------------------//
 
-  /** トークンに属する run の送り幅の合計。 */
+  /** トークンに属する run の送り幅の合計。字間は含まない。 */
   advanceOfToken(token: Token): number {
     let total = 0;
     for (let i = token.start; i < token.end; i++) total += this.runs[i].advance;
     return total;
+  }
+
+  /**
+   * run の後ろに足す字間（px、縮小適用後）。レイアウトは、これを run の矩形（frame）の行方向の長さに含める。
+   * CSS の letter-spacing と同じく各文字の後ろに足す（行末の文字と空白の後ろにも足す）が、次のところには足さない。
+   * - 改行の run
+   * - 分離禁止文字の間（「……」「——」。点や線がつながって見えるように。均等配置で空けないのと同じ）
+   * 縦中横は横に並べた数字を 1 つのまとまりとして扱い、数字の間には足さずに、まとまりの後ろ（行方向）に足す。
+   * そのため縦中横の run は、どれもこの値を矩形の高さに含む（横に並ぶ幅には足さない）。
+   */
+  letterSpacingAfter(runId: number): number {
+    const spacing = this.adjustLetterSpacing;
+    if (spacing === 0) return 0;
+    const run = this.runs[runId];
+    if (!run || run.isNewline) return 0;
+    const next = this.runs[runId + 1];
+    if (next && isInseparablePair(run.char, next.char)) return 0;
+    return spacing;
   }
 
   //--------------------------------------------------------------//

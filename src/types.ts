@@ -55,6 +55,7 @@ export interface Rect {
 /**
  * 1 文字（書記素クラスタ）のレイアウト結果。Swift 版の STRun に相当する。
  * 座標系は y 下向き、単位は CSS px。position はグリフ原点（ベースライン左端）、frame は文字の占有矩形。
+ * 字間（letterSpacing）を指定したときの frame は、文字の後ろの字間を含む（行方向に広がる）。
  */
 export interface Run {
   tokenId: number;
@@ -164,6 +165,23 @@ export interface StoneOptions {
   kinsoku?: boolean;
   /** 単語単位で改行する（単語の途中で改行しない）。既定 true。 */
   dividesByWords?: boolean;
+  /**
+   * 字間（px）。CSS の letter-spacing と同じく、各文字の後ろに足す（行末の文字の後ろにも足す）。負の値なら詰める。既定 0。
+   * 縦中横の数字の間と、分離禁止文字の間（「……」「——」）には足さない。
+   * adjustsFontSizeToFitWidth で縮小するときは、フォントと同じ率で縮める。
+   */
+  letterSpacing?: number;
+  /**
+   * 段落の 1 行目の字下げ（px）。CSS の text-indent と同じく、行頭に空きを入れる。入れるのはテキストの先頭の行と、
+   * 改行の直後の行で、折り返しで始まる行には入れない。負の値なら 1 行目が領域の手前（横書きは左、縦書きは上）に出る。既定 0。
+   * adjustsFontSizeToFitWidth で縮小するときは、フォントと同じ率で縮める。
+   */
+  textIndent?: number;
+  /**
+   * 改行の直後の行にも字下げを入れる（CSS の text-indent の each-line に相当）。既定 true。
+   * false にすると、CSS の text-indent の既定と同じく、テキストの先頭の行だけに入れる（<br> の後ろの行は字下げしない）。
+   */
+  textIndentEachLine?: boolean;
   /** 文字種ごとのフォント。 */
   fonts?: Partial<Record<Script, FontSpec>>;
 }

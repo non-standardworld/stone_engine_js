@@ -94,3 +94,13 @@ export {
   type SizeSpec,
 } from "./controller.js";
 export { mountStoneText, type MountOptions, type StoneTextHandle } from "./vanilla.js";
+export {
+  DEFAULT_AUTO_SCOPE,
+  DEFAULT_AUTO_TARGETS,
+  autoStone,
+  type AutoStoneHandle,
+  type AutoStoneOptions,
+  type AutoStoneReport,
+  type AutoStoneState,
+} from "./auto/auto.js";
+export type { AutoSkipReason, AutoStoneOverrides } from "./auto/style.js";

@@ -12,6 +12,20 @@ vert が効かない Safari などの WebKit では、縦組み用グリフを�
 選択範囲をコピーするときに <text> の境目ごとに改行を入れるため、1 文字ごとに <text> を分けると
 コピーしたテキストが 1 文字ずつ改行されてしまう（縦書きのようになる）。
 空白の run も <tspan> として xml:space="preserve" で残し、コピーしたときに単語間の空白が消えないようにする。
+
+SVG のルートでは、継承されるとテキストの文字の位置・向き・字形が変わるプロパティを決めておく（SVG_TEXT_STYLE）。位置と向きはエンジンが
+1 文字ずつ決め、送り幅は canvas で「スタイル・太さ・サイズ・ファミリー」だけを指定して測っている（measure/canvas.ts。ページの CSS は
+効かない）ので、ページ側の指定が SVG のテキストにだけ届くと、描いた結果がレイアウトと食い違う。
+- writing-mode: 縦書きの要素（writing-mode: vertical-rl など）の中に置かれると、SVG の <text> が自分で文字を縦に並べようとして、
+  <tspan x y> の原点が「ベースラインの左端」ではなく「文字の上端の中央」になり、文字が約 0.5em 左、約 0.88em 下にずれる
+  （回転する欧文や縦中横は向きも変わる）。縦書きのテキストも、SVG の中では横書きの文字として描く。
+- direction / text-anchor / dominant-baseline: 原点の意味が変わる。direction: rtl では文字が x の左側に置かれて 1 文字ぶん左に、
+  text-anchor: middle では半分だけ左にずれる。dominant-baseline（Chrome では継承される）は上下にずらす。
+- text-transform: 測った文字と違う文字（大文字など）が描かれる。
+- font-variant-* / font-feature-settings / font-variation-settings / font-optical-sizing / font-stretch / font-size-adjust:
+  字形と送り幅が、測ったものと変わる（プロポーショナルな字形、スモールキャップ、数字の字形、幅や太さの違う書体、文字の大きさの補正）。
+  縦組み用グリフなど、エンジンが使う font-feature-settings は、同じフォント設定の文字をまとめた <tspan> に指定する。
+字間（letter-spacing / word-spacing）は、1 文字ずつ位置を指定しているので、継承されても描いた結果は変わらない。
 */
 
 import type { StoneContext } from "../context.js";
@@ -35,6 +49,32 @@ export const FULL_WIDTH_FEATURE_SETTINGS = '"fwid" 1';
 
 /** showFrames で描く矩形の既定の色。 */
 export const DEFAULT_FRAME_COLOR = "rgba(0,128,255,0.6)";
+
+/**
+ * ルートの <svg> に指定する、文字まわりの CSS（React の style と同じ名前で持つ）。どれも継承されるプロパティで、ここで決めておかないと、
+ * ページ側の指定が SVG のテキストに届いて、文字の位置・向き・字形がレイアウトと食い違う（ファイル冒頭のコメント）。
+ * svgString と React の StoneSVG の両方が使う。
+ */
+export const SVG_TEXT_STYLE = {
+  /** font-variant-ligatures を none（1 文字ずつ置くので合字にしない）、ほかの font-variant-* を既定にする。 */
+  fontVariant: "none",
+  fontKerning: "none",
+  fontFeatureSettings: "normal",
+  fontVariationSettings: "normal",
+  fontOpticalSizing: "auto",
+  fontStretch: "normal",
+  fontSizeAdjust: "none",
+  textTransform: "none",
+  writingMode: "horizontal-tb",
+  direction: "ltr",
+  textAnchor: "start",
+  dominantBaseline: "auto",
+} as const;
+
+/** SVG_TEXT_STYLE を style 属性の書き方（font-variant:none;font-kerning:none;…）にしたもの。 */
+const SVG_TEXT_CSS = Object.entries(SVG_TEXT_STYLE)
+  .map(([name, value]) => `${name.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`)}:${value}`)
+  .join(";");
 
 export interface GlyphElement {
   runId: number;
@@ -381,7 +421,7 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
     `height="${size.height}"`,
     `viewBox="0 0 ${size.width} ${size.height}"`,
     `class="${escapeAttr(options.className ?? "stone-svg")}"`,
-    `style="display:block;overflow:${svgOverflow(ctx)};fill:${escapeAttr(color)};font-variant-ligatures:none;font-kerning:none"`,
+    `style="display:block;overflow:${svgOverflow(ctx)};fill:${escapeAttr(color)};${SVG_TEXT_CSS}"`,
     'aria-hidden="true"',
   ];
   for (const [k, v] of Object.entries(options.attributes ?? {})) {

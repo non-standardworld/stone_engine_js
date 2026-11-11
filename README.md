@@ -182,78 +182,6 @@ element.innerHTML = svgString(layout);
 element.addEventListener("copy", (event) => handleStoneCopy(event, layout, element));
 ```
 
-## オートモード（試験的）
-
-コンポーネントを使わずに、ページの中のふつうの段落や見出しを、CSS で決まった見た目のまま自動で組みます。読み込むのは 1 行です。
-
-```ts
-import "@non-standardworld/stone-engine.js/auto";
-```
-
-組む範囲には `data-stone` 属性を付けます。その中の `p`、`h1`〜`h6`、`blockquote` が対象です。
-
-```html
-<article data-stone>
-  <h1>見出し</h1>
-  <p>段落の中の<a href="/about">リンク</a>や<strong>太字</strong>も、そのまま組まれます。</p>
-</article>
-```
-
-`<body data-stone>` と書けばページ全体が範囲になります。範囲の中で組みたくない部分には `data-stone="off"` を付けます。
-
-- フォント、文字サイズ、行送り、行揃え（`text-align`）、字間（`letter-spacing`）、1 行目の字下げ（`text-indent`）、縦書き（`writing-mode: vertical-rl`）は、その要素の CSS から読み取ります。和文も欧文も CSS の `font-family` をそのまま使い、欧文のスケールは 1 です。約物の詰め、禁則、縦中横などはエンジンの既定の設定です（字間を空けた段落でも、「……」「——」の間と縦中横の数字の間は空けません）。
-- 元の DOM には触りません。要素に Shadow DOM を付けて、その中に組版結果の SVG を描きます。元の中身はスクリーンリーダーと検索エンジンのためにそのまま残るので、サイトの CSS のセレクターも、React などによる中身の書き換えも、そのまま動きます。React Router での例は `examples/react-router` の `/auto` です。
-- CSS の行の高さとベースラインに合わせて置くので、組んでも文字の位置と前後の要素の位置は（改行位置が変わらない限り）動きません。
-- 要素の幅の変化、後から追加・変更された要素、Web フォントの読み込みに自動で追従します。画面から遠い要素は、近づいてから組みます。
-- HTML のソースの改行や字下げは、CSS と同じ規則で空白にたたみます。和文の途中でソースを改行しても、空白は入りません。
-- リンクはそのままクリックでき（SPA のルーターのリンクも動きます）、キーボードのフォーカスには枠を描きます。選択してコピーすると、元のテキストがクリップボードに入ります。複数の要素にまたがる選択では、組んでいないときと同じ HTML も入ります。
-
-### 組まれない要素
-
-エンジンが再現できないものを含む要素は、何もせずに元の表示のまま残します（見た目が変わるくらいなら何もしない、という方針です）。
-
-- ルビ、画像、フォームの部品、`<code>` や `<sup>` のようにフォントや大きさの違う文字、背景や枠のあるインライン要素を含むもの
-- `text-transform`、`word-spacing`、`font-feature-settings`（`palt` など）、`font-variant-caps` / `font-variant-numeric` など（スモールキャップ、等幅の数字のように字形を変える指定）、`font-size-adjust`、`text-wrap: balance`、`text-shadow`、段組みなどを使っているもの、`::before` / `::after` で行の中に内容を足しているもの
-- 段落の中の一部の要素だけ `letter-spacing` を変えているもの、`text-indent` をパーセントで指定しているものと `hanging` を付けているもの（`letter-spacing` と `text-indent` は、段落全体に px や em で指定したものを組みます）
-- 下線・打ち消し線の種類（点線や波線）、太さ、下線の位置（`text-underline-offset`）を指定しているもの、上線を引いているもの（エンジンは実線を、自分で決めた太さと位置に描くため）
-- フロートが回り込んでいるもの
-- 1 文字も入らないほど幅の狭いもの、幅より大きい `text-indent` を指定しているものなど、組むと文字が入りきらないもの（エンジンは入りきらない文字を隠しますが、CSS は隠さずにはみ出させるので、文字が消えないように元の表示のまま残します。その後で幅が広がっても、中身が変わるか `refresh()` を呼ぶまでは組み直しません）
-- `li`、`td`、`dd`、`figcaption` など、Shadow DOM を付けられない要素（既定の対象に含めていません。中に `<p>` があれば、その `<p>` は組まれます）
-
-`<html data-stone-debug>` を付けると、組んだ要素に `data-stone-state="typeset"`、見送った要素に `data-stone-state="skipped"` と理由（`data-stone-reason`）が付きます。
-
-### 設定して使う
-
-範囲や対象、組版オプションを指定するときは、`/auto` を読み込む代わりに `autoStone()` を呼びます。
-
-```ts
-import { autoStone } from "@non-standardworld/stone-engine.js";
-
-const auto = autoStone({
-  scope: "article", // この中を組む（既定は "[data-stone]"）
-  targets: "p, h2, h3", // 組む要素（既定は p / h1〜h6 / blockquote）
-  // CSS から読み取った設定に重ねる
-  options: { punctuationMode: "half", fonts: { latin: { scale: 0.95 } } },
-});
-
-auto.report(); // 見つけた要素と状態（typeset、skipped と理由、queued、waiting）
-auto.refresh(); // クラスの切り替えなど、CSS だけを変えたときに読み直す
-auto.destroy(); // やめて、元の表示に戻す
-```
-
-`options` の `fonts` は、CSS から読み取ったフォントに項目単位で重なります。上の例のように `scale` だけを指定すると、`family` は CSS の `font-family` のままです。`direction` は CSS の `writing-mode` で決まるので、指定できません。
-
-`/auto` で始めた場合は、`import { autoStoneHandle } from "@non-standardworld/stone-engine.js/auto"` で同じものが取れます。
-
-### 今の制限
-
-- 試験的な機能です。Chromium と WebKit（Safari のエンジン）で確認しています。Firefox では確認していません。
-- 普通の表示と比べると、かなのカーニングが掛からず、単語の途中では改行しません（`dividesByWords`）。そのため、改行位置が変わることがあります。
-- クラスの切り替えのように CSS だけが変わったときは、自動では組み直しません（ウィンドウの大きさの変化と Web フォントの読み込みは追従します）。`refresh()` を呼んでください。
-- リンクの `:hover` の色のように、状態で変わる見た目は反映しません。
-- ページのスクリプトが `window.getSelection()` で選択範囲を読む機能（選択したテキストの共有ボタンなど）には、組んだ要素の中の選択が正しく伝わりません。Shadow DOM の中の選択は、外からは見えないためです。
-- スクリプトの読み込みが最初の描画より遅いと、一瞬だけ普通の表示が見えてから組んだ表示に替わります。
-
 ## Swift 版との違い
 
 - 編集機能（`STTextView`、カーソル、選択、ルーペ）は移植していません。表示（`STLabel`）に相当する機能のみです。
@@ -280,11 +208,9 @@ npm install          # 依存の取得とビルド
 npm test             # ユニットテスト（vitest）
 npm run build        # dist/ を生成
 npm run example      # examples/react-router のデモを起動
-npm run example:auto # examples/auto（オートモードの静的 HTML のデモ）を起動
 ```
 
-`examples/react-router` は React Router（framework mode、SSR 有効）でこのパッケージを使う最小構成です。`/auto` はオートモードのデモです。
-`examples/auto` は、静的な HTML にスクリプトを 1 行足すだけのオートモードのデモです。
+`examples/react-router` は React Router（framework mode、SSR 有効）でこのパッケージを使う最小構成です。
 
 `site/` はドキュメントサイト（Vite + React）で、`npm run site` で開発サーバーが起動します。`main` に push すると GitHub Actions（`.github/workflows/pages.yml`）が GitHub Pages にデプロイします。
 

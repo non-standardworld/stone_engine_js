@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectVerticalForms,
+  fontFeatureSettingsOf,
   glyphElements,
   glyphParagraphs,
   svgString,
@@ -101,11 +102,136 @@ describe("emulated vertical glyphs", () => {
   });
 });
 
+describe("half-width katakana in vertical text", () => {
+  const FORMS = ["feature", "emulated"] as const;
+  /** 半角カナ（U+FF61–FF9F）の 63 文字。 */
+  const HALFWIDTH_KANA = Array.from({ length: 0xff9f - 0xff61 + 1 }, (_, i) => String.fromCodePoint(0xff61 + i));
+
+  it("rotates every half-width katakana around the center of the em box in both forms, without the font's vertical glyphs", () => {
+    // 和文のアセントは 8.8（fontSize 10 × 0.88）。原点を (x + 1em − アセント, y − アセント) に移して 90 度回すと、回した字形が
+    // 列の 1em のますに重なる（半角カナは送り幅が 0.5em なので、字面はますの上半分に来る）。
+    // vrt2 の横倒しの字形（横組みの送り幅が 1em）は、vert が使えるブラウザ（feature）でも使わない
+    expect(HALFWIDTH_KANA).toHaveLength(63);
+    for (const char of HALFWIDTH_KANA) {
+      const ctx = lay(char, { direction: "tbRl" });
+      expect(ctx.runs).toHaveLength(1);
+      expect(ctx.runs[0].position).toEqual({ x: 0, y: 8.8 });
+      for (const forms of FORMS) {
+        const [el] = glyphElements(ctx, { verticalForms: forms });
+        expect(el).toMatchObject({ text: char, rotate: 90, vertical: false, fullWidth: false });
+        expect(el.x).toBeCloseTo(1.2, 5);
+        expect(el.y).toBeCloseTo(0, 5);
+      }
+    }
+  });
+
+  it("rotates a kana with a voiced or semi-voiced sound mark as one cluster, so that the mark comes below the kana", () => {
+    // 「ｶﾞ」「ﾊﾟ」は 1 つの書記素（1 つの run、1 つの <tspan>）。rotate 属性は書記素のまとまりごと回すので、「ｶ」の下に濁点が来る。
+    // vrt2 の字形に置き換えると、2 文字目の濁点が 1em 右（右隣の列の位置）に描かれる
+    const ctx = lay("ｶﾞﾊﾟ", { direction: "tbRl" });
+    expect(ctx.runs.map((run) => run.char)).toEqual(["ｶﾞ", "ﾊﾟ"]);
+    for (const forms of FORMS) {
+      for (const char of ["ｶﾞ", "ﾊﾟ"]) {
+        const { run } = runOf(ctx, char);
+        const el = glyphOf(ctx, char, forms);
+        expect(el).toMatchObject({ text: char, rotate: 90, vertical: false });
+        expect(el.x).toBeCloseTo(run.position.x + 1.2, 5);
+        expect(el.y).toBeCloseTo(run.position.y - 8.8, 5);
+      }
+      const svg = svgString(ctx, { verticalForms: forms });
+      expect(svg).toContain('<tspan x="1.2" y="0" rotate="90" data-run="0">ｶﾞ</tspan><tspan x="1.2" y="10" rotate="90" data-run="1">ﾊﾟ</tspan>');
+      expect(svg).not.toContain("vrt2");
+    }
+  });
+
+  it("keeps vert for the other characters around them in the feature form", () => {
+    // 半角カナだけが、vert を指定しないまとまり（<tspan>）に分かれる
+    const ctx = lay("あｱｶﾞ｡い", { direction: "tbRl" });
+    const feature = glyphParagraphs(ctx, { verticalForms: "feature" })[0].groups;
+    expect(feature.map((g) => [g.glyphs.map((el) => el.text).join(""), g.vertical, fontFeatureSettingsOf(g)])).toEqual([
+      ["あ", true, '"vert" 1, "vrt2" 1'],
+      ["ｱｶﾞ｡", false, null],
+      ["い", true, '"vert" 1, "vrt2" 1'],
+    ]);
+    expect(feature[1].glyphs.map((el) => el.rotate)).toEqual([90, 90, 90]);
+    expect(feature[0].glyphs[0]).toMatchObject({ x: ctx.runs[0].position.x, y: ctx.runs[0].position.y, rotate: 0 });
+    // vert を使わない描き方では、もともと 1 つのまとまり
+    const emulated = glyphParagraphs(ctx, { verticalForms: "emulated" })[0].groups;
+    expect(emulated.map((g) => [g.glyphs.map((el) => el.text).join(""), g.vertical])).toEqual([["あｱｶﾞ｡い", false]]);
+    // 半角カナの描き方は、どちらでも同じ
+    const kana = (forms: "feature" | "emulated") =>
+      glyphElements(ctx, { verticalForms: forms }).filter((el) => /^[｡-ﾟ]/.test(el.text));
+    expect(kana("feature")).toHaveLength(3);
+    expect(kana("feature")).toEqual(kana("emulated"));
+  });
+
+  it("draws text of half-width katakana alone identically in both forms", () => {
+    const ctx = lay("ﾃﾞｰﾀ｢ｺﾋﾟｰ｣､ﾊﾞｯｸｱｯﾌﾟ｡", { direction: "tbRl" }, { height: 60 });
+    expect(ctx.lineCount).toBeGreaterThan(1);
+    expect(svgString(ctx, { verticalForms: "feature" })).toBe(svgString(ctx, { verticalForms: "emulated" }));
+    expect(svgString(ctx, { verticalForms: "feature" })).not.toContain("font-feature-settings:&quot;");
+  });
+
+  it("treats only U+FF61–FF9F as half-width katakana", () => {
+    // 手前の「｠」(U+FF60) は全角の括弧、後ろの U+FFA0 は半角のハングル。全角のカナも、vert のまま
+    const ctx = lay("｠ﾠアｱ", { direction: "tbRl" });
+    expect(glyphElements(ctx, { verticalForms: "feature" }).map((el) => [el.text, el.rotate, el.vertical])).toEqual([
+      ["｠", 0, true],
+      ["ﾠ", 0, true],
+      ["ア", 0, true],
+      ["ｱ", 90, false],
+    ]);
+    // vert を使わない描き方では、「｠」は表にあるので回り、U+FFA0 と「ア」はそのまま
+    expect(glyphElements(ctx, { verticalForms: "emulated" }).map((el) => [el.text, el.rotate, el.vertical])).toEqual([
+      ["｠", 90, false],
+      ["ﾠ", 0, false],
+      ["ア", 0, false],
+      ["ｱ", 90, false],
+    ]);
+  });
+
+  it("does not rotate them in horizontal text", () => {
+    const ctx = lay("あｱｶﾞｰ｡");
+    for (const forms of FORMS) {
+      const elements = glyphElements(ctx, { verticalForms: forms });
+      expect(elements.map((el) => [el.text, el.rotate, el.vertical])).toEqual([
+        ["あ", 0, false],
+        ["ｱ", 0, false],
+        ["ｶﾞ", 0, false],
+        ["ｰ", 0, false],
+        ["｡", 0, false],
+      ]);
+      expect(elements.map((el) => [el.x, el.y])).toEqual(ctx.runs.map((run) => [run.position.x, run.position.y]));
+    }
+  });
+
+  it("draws the ellipsis that replaces a half-width katakana upright, like any other vertical ellipsis", () => {
+    // 省略記号は run の文字にかかわらず、和文フォントの正立の「︙」を列の 1em 四方に描く（半角カナと一緒には回さない）
+    const ctx = lay("ｱｲｳｴｵｶ", { direction: "tbRl" }, { width: 10, height: 35 });
+    const ellipsis = ctx.runs.findIndex((run) => run.visibility === "ellipsis");
+    expect(ctx.runs[ellipsis].char).toBe("ｳ");
+    for (const forms of FORMS) {
+      const elements = glyphElements(ctx, { verticalForms: forms });
+      expect(elements.map((el) => [el.text, el.rotate])).toEqual([
+        ["ｱ", 90],
+        ["ｲ", 90],
+        ["︙", 0],
+      ]);
+      expect(elements[2]).toMatchObject({ x: 0, y: 28.8, vertical: true });
+    }
+  });
+});
+
 describe("verticalGlyphTransform", () => {
   it("classifies the characters whose vertical glyphs are rotated or moved", () => {
     for (const char of Array.from("「」『』（）【】〔〕［］｛｝〈〉《》ー〜～―…‥：＝｜")) {
       expect(verticalGlyphTransform(char)).toEqual({ type: "rotate" });
     }
+    // 半角カナ（半角の括弧・句読点・長音・濁点を含む）は回す。濁点・半濁点の付いたまとまりも、先頭の文字で決まる
+    for (const char of ["ｱ", "ﾝ", "ｯ", "ｰ", "｡", "､", "･", "｢", "｣", "ﾞ", "ﾟ", "ｶﾞ", "ﾊﾟ"]) {
+      expect(verticalGlyphTransform(char)).toEqual({ type: "rotate" });
+    }
+    expect(verticalGlyphTransform("ﾠ")).toBeNull(); // 半角のハングルは対象外
     expect(verticalGlyphTransform("“", true)).toEqual({ type: "rotate" });
     for (const char of Array.from("、。，．ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ〝〟")) {
       expect(verticalGlyphTransform(char)?.type).toBe("shift");

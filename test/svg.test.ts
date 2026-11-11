@@ -146,11 +146,12 @@ describe("SVG output", () => {
   });
 
   it("sizes the SVG of vertical text by its column boxes when the rightmost column holds only half-width kana or a wide emoji", () => {
-    // 幅を決めない領域。半角カナ（5.5px）は列の左端から描く。SVG の幅は、矩形までの 16px（15.5px の切り上げ）ではなく、
-    // 列の 1em の箱の並びの幅（2 列ぶんの 20px）にする。文字の位置は SVG の左端から変わらない
+    // 幅を決めない領域。半角カナ（矩形は列の左端から 5.5px）は、列の 1em のます（x 10〜20）の中心で回して描く。SVG の幅は、
+    // 矩形までの 16px（15.5px の切り上げ）ではなく、列の 1em の箱の並びの幅（2 列ぶんの 20px）にする。文字の位置は SVG の左端から変わらない
     const kana = svgString(lay("ｱあ", { direction: "tbRl" }, { height: 10 }));
     expect(kana).toContain('width="20" height="10" viewBox="0 0 20 10"');
-    expect(kana).toContain('<tspan x="10" y="8.8" data-run="0">ｱ</tspan><tspan x="0" y="8.8" data-run="1">あ</tspan>');
+    expect(kana).toContain('<tspan x="11.2" y="0" rotate="90" data-run="0">ｱ</tspan>'); // 原点は、ますの左上から 1em − アセント（1.2px）右
+    expect(kana).toContain('<tspan x="0" y="8.8" data-run="1">あ</tspan>');
     // 送り幅が 1em より広い絵文字（12.4px）も列の左端から描く。箱の右にはみ出す送り幅は、SVG の幅に数えない（23px だった）
     const wideEmoji = { direction: "tbRl", fonts: { emoji: { family: "", scale: 1.24 } } } as const;
     const emoji = svgString(lay("😀あ", wideEmoji, { height: 10 }));

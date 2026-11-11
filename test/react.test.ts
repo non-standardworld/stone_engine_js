@@ -58,6 +58,18 @@ describe("StoneSVG", () => {
     expectSameSvg(lay("令和6年12月31日、Ver.2.0を公開。123", { direction: "tbRl", dividesByWords: true }, { height: 60 }));
   });
 
+  it("renders half-width katakana in vertical text the same way, rotated in both forms", () => {
+    const ctx = lay("縦書きのﾃﾞｰﾀを｢ｺﾋﾟｰ｣する｡", { direction: "tbRl" }, { height: 50 });
+    expectSameSvg(ctx);
+    // 半角カナは、vert を使う描き方でも回して描く。濁点の付いた「ﾃﾞ」は、1 つの <tspan> のまま回す
+    for (const verticalForms of ["feature", "emulated"] as const) {
+      const html = renderToStaticMarkup(createElement(StoneSVG, { layout: ctx, verticalForms }));
+      expect(html).toMatch(/<tspan x="[\d.]+" y="[\d.]+" rotate="90" data-run="\d+">ﾃﾞ<\/tspan>/);
+      expect(html).toMatch(/<tspan x="[\d.]+" y="[\d.]+" rotate="90" data-run="\d+">｡<\/tspan>/);
+      expect(html).toMatch(/<tspan x="[\d.]+" y="[\d.]+" data-run="0">縦<\/tspan>/);
+    }
+  });
+
   it("renders truncation and debug frames the same way", () => {
     expectSameSvg(lay("あいうえおかきくけこ", {}, { width: 55, height: 10 }), true);
   });

@@ -516,6 +516,106 @@ describe("truncation tbRl", () => {
     expect(Math.min(...ctx.runs.map((r) => r.frame.x))).toBeCloseTo(0);
   });
 
+  it("shows every column whose 1em box fits, even with a tate-chu-yoko wider than 1em in the rightmost or leftmost column", () => {
+    const options = { direction: "tbRl", dividesByWords: true } as const;
+    // 幅 20px は 2 列ちょうど。2 桁の縦中横（10.45px）は列の中央に寄せるので、列の 1em の箱から両側に 0.225px はみ出す。
+    // はみ出しまで領域に収めると、右端の列に縦中横があるだけで左端の列が領域から 0.225px 出て、その列が隠れていた
+    const right = lay("78\nあい", options, { width: 20 });
+    expect(right.isTruncated).toBe(false);
+    expect(shown(right)).toBe("78\nあい");
+    expect(runOf(right, "あ").run.frame.x).toBeCloseTo(0); // 列の箱は領域にちょうど収まる
+    const eight = runOf(right, "8").run;
+    expect(eight.frame.x + eight.frame.width).toBeCloseTo(20.225); // 数字は領域の右にはみ出す
+    // 左端の列に縦中横があるときは、数字が領域の左にはみ出す
+    const left = lay("あい\n78", options, { width: 20 });
+    expect(left.isTruncated).toBe(false);
+    expect(shown(left)).toBe("あい\n78");
+    expect(runOf(left, "あ").run.frame.x).toBeCloseTo(10);
+    expect(runOf(left, "7").run.frame.x).toBeCloseTo(-0.225);
+    // 縦中横だけを 1 列ぶんの幅に組んでも表示する（省略記号も出ず、何も描かれなかった）
+    const alone = lay("78", options, { width: 10 });
+    expect(alone.isTruncated).toBe(false);
+    expect(shown(alone)).toBe("78");
+    expect(runOf(alone, "7").run.frame.x).toBeCloseTo(-0.225);
+    expect(svgString(alone)).not.toContain("︙");
+    // 行送りを空けた 3 列も、列数ちょうどの幅（行送り 15px × 2 + 1em）に収まる
+    const spaced = lay("12月24日\n夜の東京\n初雪", { ...options, lineHeightScale: 1.5 }, { width: 40 });
+    expect(spaced.isTruncated).toBe(false);
+    expect(shown(spaced)).toBe("12月24日\n夜の東京\n初雪");
+    expect(runOf(spaced, "月").run.frame.x).toBeCloseTo(30);
+    expect(runOf(spaced, "初").run.frame.x).toBeCloseTo(0);
+    // 1 桁でも、1em より広ければ同じ（欧文のスケール 2 で 11px）
+    const big = lay("7\nあ", { ...options, fonts: { latin: { family: "", scale: 2 } } }, { width: 20 });
+    expect(big.isTruncated).toBe(false);
+    expect(runOf(big, "7").run.frame.x).toBeCloseTo(9.5);
+    expect(runOf(big, "あ").run.frame.x).toBeCloseTo(0);
+  });
+
+  it("keeps the column boxes inside the area with every directionAlign when the width is exactly the columns", () => {
+    const options = { direction: "tbRl", dividesByWords: true } as const;
+    for (const directionAlign of ["start", "middle", "end"] as const) {
+      for (const text of ["78\nあい", "あい\n78", "78\n90", "78"]) {
+        const columns = text.split("\n");
+        const width = columns.length * 10;
+        const ctx = lay(text, { ...options, directionAlign }, { width });
+        expect(ctx.isTruncated).toBe(false);
+        expect(shown(ctx)).toBe(text);
+        // 列は右から 1em ずつ並ぶ。縦中横は、数字の並びの中央が列の中央に来る（はみ出しは左右に同じだけ）
+        columns.forEach((column, line) => {
+          const first = runOf(ctx, column[0]).run;
+          const last = runOf(ctx, column[column.length - 1]).run;
+          expect(first.line).toBe(line);
+          const center = ctx.isTateChuYoko(first)
+            ? (first.frame.x + last.frame.x + last.frame.width) / 2
+            : first.frame.x + 5;
+          expect(center).toBeCloseTo(width - 5 - line * 10);
+        });
+      }
+    }
+  });
+
+  it("keeps the overhang of a tate-chu-yoko inside the area while there is room, and still truncates a column whose box does not fit", () => {
+    const options = { direction: "tbRl", dividesByWords: true } as const;
+    // 余裕（1px）がはみ出し（0.225px）より大きければ、今までどおり数字の右端を領域の右端に合わせる
+    const roomy = lay("78\nあい", options, { width: 21 });
+    const eight = runOf(roomy, "8").run;
+    expect(eight.frame.x + eight.frame.width).toBeCloseTo(21);
+    expect(runOf(roomy, "あ").run.frame.x).toBeCloseTo(0.775);
+    // 余裕（0.1px）がはみ出しより小さければ、列の箱を領域に収めて、数字が足りない分（0.125px）だけはみ出す
+    const tight = lay("78\nあい", options, { width: 20.1 });
+    expect(tight.isTruncated).toBe(false);
+    expect(runOf(tight, "あ").run.frame.x).toBeCloseTo(0);
+    const digit = runOf(tight, "8").run;
+    expect(digit.frame.x + digit.frame.width).toBeCloseTo(20.225);
+    // 中央寄せ・左寄せでも、数字のはみ出しを含めた並びを寄せてから、列の箱を領域に収める
+    const middle = lay("78\n90", { ...options, directionAlign: "middle" }, { width: 20.2 });
+    expect(runOf(middle, "9").run.frame.x).toBeCloseTo(-0.125); // 左右に 0.125px ずつはみ出す
+    const rightmost = runOf(middle, "8").run;
+    expect(rightmost.frame.x + rightmost.frame.width).toBeCloseTo(20.325);
+    const end = lay("78\n90", { ...options, directionAlign: "end" }, { width: 20.3 });
+    expect(runOf(end, "9").run.frame.x).toBeCloseTo(0); // 左端の数字は領域に収まり、右端の数字が 0.15px はみ出す
+    // 列の箱が収まらない幅では、今までどおりその列から後ろを隠す
+    const narrow = lay("78\nあい", options, { width: 19.9 });
+    expect(narrow.isTruncated).toBe(true);
+    expect(shown(narrow)).toBe("…");
+    expect(runOf(narrow, "7").run.visibility).toBe("ellipsis");
+    // 1em に収まる縦中横（欧文のスケール 0.9 で 2 桁 9.9px）は、はみ出さない
+    const fits = lay("78\nあい", { ...options, fonts: { latin: { family: "", scale: 0.9 } } }, { width: 20 });
+    expect(fits.isTruncated).toBe(false);
+    expect(runOf(fits, "7").run.frame.x).toBeCloseTo(10.05);
+  });
+
+  it("does not shrink the text because a tate-chu-yoko sticks out of its column", () => {
+    // 幅が列数ちょうどだと切り詰めとみなされて、収まるまで縮小されていた（縮小率 0.9375）
+    const ctx = lay(
+      "78\nあい",
+      { direction: "tbRl", dividesByWords: true, adjustsFontSizeToFitWidth: true, minimumScaleFactor: 0.5 },
+      { width: 20 },
+    );
+    expect(ctx.adjustFontScale).toBe(1);
+    expect(ctx.isTruncated).toBe(false);
+  });
+
   it("aligns only the columns that fit with directionAlign middle and end", () => {
     // 2 列目は収まらないので 1 列目だけを中央・左に寄せる（隠れる列は常に末尾側）
     const middle = lay("あいうえおかきくけこ", { direction: "tbRl", directionAlign: "middle" }, { width: 15, height: 55 });

@@ -112,6 +112,25 @@ describe("SVG output", () => {
     expect(svgString(japanese)).toContain('<tspan x="0" y="48.8" data-run="4">︙</tspan>');
   });
 
+  it("draws a tate-chu-yoko wider than 1em in an edge column where it is, sticking out of the area", () => {
+    // 幅 20px は 2 列ちょうど。2 桁の縦中横（10.45px）は列の中央に置くので、端の列では数字の送り幅の箱が領域から 0.225px 出る。
+    // 列は隠さず、数字もその位置に描く（幅と高さを両方決めた領域では、はみ出した分を SVG が切り取る）
+    const right = lay("78\nあい", { direction: "tbRl", dividesByWords: true }, { width: 20, height: 30 });
+    const svg = svgString(right);
+    expect(svg).toContain('width="20" height="30"');
+    expect(svg).toContain("overflow:hidden");
+    expect(svg).not.toContain("︙");
+    expect(paragraphTexts(right)).toEqual(["78", "あい"]);
+    expect(svg).toContain('<tspan x="9.77" y="7.63" data-run="0">7</tspan><tspan x="15" y="7.63" data-run="1">8</tspan>'); // 「8」は 20.225px まで
+    expect(svg).toContain('<tspan x="0" y="8.8" data-run="3">あ</tspan>');
+    // 左端の列では、数字の原点が領域の左に出る
+    const left = lay("あい\n78", { direction: "tbRl", dividesByWords: true }, { width: 20, height: 30 });
+    expect(paragraphTexts(left)).toEqual(["あい", "78"]);
+    expect(svgString(left)).toContain('<tspan x="-0.23" y="7.63" data-run="3">7</tspan><tspan x="5" y="7.63" data-run="4">8</tspan>');
+    // 幅だけを決めた領域では、SVG は領域の外を切り取らない
+    expect(svgString(lay("78\nあい", { direction: "tbRl", dividesByWords: true }, { width: 20 }))).toContain("overflow:visible");
+  });
+
   it("draws the ellipsis from the start of the frame of a compressed opening bracket", () => {
     // 半角にした「は原点を左にずらして描くが、省略記号は矩形の先頭から描く（前の文字に重ねない）
     const ctx = lay("あ「\nい", { punctuationMode: "half" }, { height: 10 });

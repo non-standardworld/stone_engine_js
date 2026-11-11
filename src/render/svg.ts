@@ -12,6 +12,11 @@ vert が効かない Safari などの WebKit では、縦組み用グリフを�
 選択範囲をコピーするときに <text> の境目ごとに改行を入れるため、1 文字ごとに <text> を分けると
 コピーしたテキストが 1 文字ずつ改行されてしまう（縦書きのようになる）。
 空白の run も <tspan> として xml:space="preserve" で残し、コピーしたときに単語間の空白が消えないようにする。
+
+SVG のルートには writing-mode: horizontal-tb を指定する。writing-mode は継承されるので、縦書きの要素（writing-mode: vertical-rl など）の
+中に置かれると、SVG の <text> が自分で文字を縦に並べようとして、<tspan x y> の原点が「ベースラインの左端」ではなく「文字の上端の中央」になり、
+文字が約 0.5em 左、約 0.88em 下にずれる（回転する欧文や縦中横は向きも変わる）。位置と向きはエンジンが 1 文字ずつ決めているので、
+縦書きのテキストも、SVG の中では横書きの文字として描く。
 */
 
 import type { StoneContext } from "../context.js";
@@ -381,7 +386,8 @@ export function svgString(ctx: StoneContext, options: SvgStringOptions = {}): st
     `height="${size.height}"`,
     `viewBox="0 0 ${size.width} ${size.height}"`,
     `class="${escapeAttr(options.className ?? "stone-svg")}"`,
-    `style="display:block;overflow:${svgOverflow(ctx)};fill:${escapeAttr(color)};font-variant-ligatures:none;font-kerning:none"`,
+    // writing-mode は、縦書きの要素の中に置かれても SVG のテキストが縦に並ばないようにする（ファイル冒頭のコメント）
+    `style="display:block;overflow:${svgOverflow(ctx)};fill:${escapeAttr(color)};font-variant-ligatures:none;font-kerning:none;writing-mode:horizontal-tb"`,
     'aria-hidden="true"',
   ];
   for (const [k, v] of Object.entries(options.attributes ?? {})) {

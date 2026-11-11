@@ -120,6 +120,15 @@ describe("SVG output", () => {
     expect(open.run.position.x).toBe(5);
     expect(svgString(ctx)).toContain(`<tspan x="10" y="8.8" data-run="${open.id}">…</tspan>`);
   });
+
+  it("resets the writing mode on the root, so that SVG does not lay the text out vertically inside a vertical element", () => {
+    // writing-mode は継承される。縦書きの要素の中に置かれると SVG の <text> が自分で文字を縦に並べ、<tspan x y> の原点が
+    // 文字の上端の中央になって位置がずれるので、横書きでも縦書きでも、ルートで横書きに戻す
+    for (const ctx of [lay("日本語 Hello"), lay("日本語 Hello", { direction: "tbRl" })]) {
+      const style = svgString(ctx).match(/^<svg [^>]* style="([^"]*)"/)?.[1] ?? "";
+      expect(style.split(";")).toContain("writing-mode:horizontal-tb");
+    }
+  });
 });
 
 describe("textOfRunRange", () => {

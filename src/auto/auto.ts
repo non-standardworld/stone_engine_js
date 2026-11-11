@@ -875,10 +875,6 @@ class AutoStone implements AutoStoneHandle {
 
     const ctx = layoutText(block.source.text, block.resolved, this.measurer, size, block.source.spans);
     parts.canvas.innerHTML = svgString(ctx, { spans: block.source.spans });
-    // 縦書きの要素の中では writing-mode が SVG のテキストにも継承され、SVG が自分で縦に並べようとする
-    // （文字の原点が上端の中央になり、位置がずれる）。位置はエンジンが 1 文字ずつ決めているので、SVG の中は横書きに戻す
-    const svg = parts.canvas.querySelector("svg");
-    if (svg) svg.style.writingMode = "horizontal-tb";
     // リンクのキーボード操作は元の <a> が受けるので、SVG のリンクは Tab の順序から外す
     for (const link of parts.canvas.querySelectorAll("a")) link.setAttribute("tabindex", "-1");
 

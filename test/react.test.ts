@@ -30,13 +30,22 @@ function contents(markup: string): string[] {
   return out;
 }
 
-/** 2 つの描画方法で同じ SVG になることを確かめる。 */
+/** ルートの <svg> の style の宣言（名前:値）を、名前順に並べたもの。 */
+function rootStyle(markup: string): string[] {
+  const style = markup.match(/^<svg [^>]* style="([^"]*)"/)?.[1] ?? "";
+  return style.split(";").filter(Boolean).sort();
+}
+
+/** 2 つの描画方法で同じ SVG になることを確かめる（ルートの大きさと style、中身）。 */
 function expectSameSvg(ctx: StoneContext, showFrames = false, spans?: StoneSpan[]): void {
   const fromString = svgString(ctx, { showFrames, spans });
   const fromReact = renderToStaticMarkup(createElement(StoneSVG, { layout: ctx, showFrames, spans }));
   for (const attr of ["width", "height", "viewBox"]) {
     expect(fromReact.match(new RegExp(` ${attr}="([^"]*)"`))?.[1]).toBe(fromString.match(new RegExp(` ${attr}="([^"]*)"`))?.[1]);
   }
+  // writing-mode: horizontal-tb（縦書きの要素の中でも SVG のテキストを縦に並べさせない）などが、どちらにも付いている
+  expect(rootStyle(fromReact)).toContain("writing-mode:horizontal-tb");
+  expect(rootStyle(fromReact)).toEqual(rootStyle(fromString));
   expect(contents(fromReact)).toEqual(contents(fromString));
 }
 

@@ -295,6 +295,8 @@ export function StoneSVG({
         fill: color,
         fontVariantLigatures: "none",
         fontKerning: "none",
+        // 縦書きの要素の中に置かれても、SVG のテキストが縦に並ばないようにする（render/svg.ts の冒頭のコメント）
+        writingMode: "horizontal-tb",
         ...style,
       }}
       onCopy={handleCopy}

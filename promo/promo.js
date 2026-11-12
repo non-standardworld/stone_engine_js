@@ -28,10 +28,15 @@ const C = {
 /* ---------- 文言 ---------- */
 
 const COPY = {
-  hook: "紙ではなく、\n画面のための\n日本語組版。",
+  hook: "印刷物基準の\n文字組みを\nウェブの\n世界で。",
   sub: "ブラウザのための日本語組版エンジン",
   vertical:
-    "紙ではなく、画面のための日本語組版。\n縦書き、禁則、約物、縦中横。\nstone-engine.jsは、それらをWebフォントのまま、ブラウザの上で組み直す。",
+    "印刷物基準の文字組みを、ウェブの世界で。\n縦書き、縦中横、約物、禁則。\nstone-engine.jsは、それらをWebフォントのまま、ブラウザの上で組み直す。",
+  lineage: "日本デザインセンターから生まれた\niOS用文字組みエンジンを継承。",
+  lineageName: "日本デザインセンター",
+  lineageFrom: "日本デザインセンター ／ iOS・Swift",
+  lineageTo: "ウェブ ／ JavaScript・TypeScript",
+  credit: "日本デザインセンターから生まれた iOS 用文字組みエンジン stone_engine を継承  ・  MIT License",
   kinsoku: "行頭に句読点を置かない。毎朝のおいしいコーヒーも、「ちょっと待って」も、行頭に来ない。",
   punct: "「約物」の連続（『』）は、\n前後を見て、「自然」に詰める。",
   tcy: "2026年11月12日、\n午前10時30分、\nRoom 205に集合。",
@@ -322,10 +327,10 @@ function panel(root, f) {
 function hook(root) {
   const L = lay(
     COPY.hook,
-    { direction: "tbRl", fontSize: 140, lineHeightScale: 1.5, punctuationMode: "whole", fonts: F.minchoBold },
+    { direction: "tbRl", fontSize: 128, lineHeightScale: 1.5, punctuationMode: "whole", fonts: F.minchoBold },
     { height: 900 },
   );
-  const st = new Stone(root).setLayout(L).place(1750 - L.w, 120);
+  const st = new Stone(root).setLayout(L).place(1750 - L.w, 156);
   const cells = S("g", { fill: "none", stroke: C.line, "stroke-width": 2 }, st.back);
   for (const g of L.glyphs) {
     const f = g.run.frame;
@@ -344,12 +349,53 @@ function hook(root) {
   return (t) => {
     rule.style.transform = `scaleX(${E.out(seg(t, 0, 0.8))})`;
     st.draw((g, i) => {
-      const t0 = 0.3 + i * 0.085 + g.line * 0.14;
+      const t0 = 0.3 + i * 0.08 + g.line * 0.14;
       const p = E.out(seg(t, t0, t0 + 0.34));
       return { opacity: p, y: g.y - 30 * (1 - p) };
     });
-    cells.setAttribute("opacity", (1 - E.inOut(seg(t, 2.7, 3.4))).toFixed(3));
-    npm.style.opacity = E.out(seg(t, 2.3, 2.9));
+    cells.setAttribute("opacity", (1 - E.inOut(seg(t, 2.9, 3.6))).toFixed(3));
+    npm.style.opacity = E.out(seg(t, 2.5, 3.1));
+  };
+}
+
+/** 出自。日本デザインセンターから生まれた iOS 用のエンジン stone_engine を継承したことを伝える。 */
+function lineage(root) {
+  $("div", { class: "lineage__kicker", text: "ORIGIN" }, root);
+  const L = lay(
+    COPY.lineage,
+    { fontSize: 84, lineHeightScale: 1.55, textAlign: "center", fonts: F.minchoBold },
+    { width: 1680 },
+  );
+  const st = new Stone(root).setLayout(L).place(120, 322);
+  const nameLength = COPY.lineageName.length;
+
+  const row = $("div", { class: "lineage__row" }, root);
+  const from = $("div", { class: "lineage__node" }, row);
+  $("div", { class: "lineage__mark", text: "stone_engine" }, from);
+  $("div", { class: "lineage__note", text: COPY.lineageFrom }, from);
+  const arrow = $("div", { class: "lineage__arrow" }, row);
+  const shaft = $("i", {}, arrow);
+  const head = $("b", {}, arrow);
+  const to = $("div", { class: "lineage__node" }, row);
+  $("div", { class: "lineage__mark", text: "stone-engine.js" }, to);
+  $("div", { class: "lineage__note", text: COPY.lineageTo }, to);
+
+  const rise = (el, p) => {
+    el.style.opacity = p;
+    el.style.transform = `translateY(${22 * (1 - p)}px)`;
+  };
+
+  return (t) => {
+    // 先頭の社名は赤で組む
+    st.draw((g, i) => {
+      const t0 = 0.15 + i * 0.03;
+      const p = E.out(seg(t, t0, t0 + 0.45));
+      return { opacity: p, y: g.y + 26 * (1 - p), fill: i < nameLength ? C.accent : C.ink };
+    });
+    rise(from, E.out(seg(t, 1.2, 1.7)));
+    shaft.style.transform = `scaleX(${E.inOut(seg(t, 1.5, 2.1))})`;
+    head.style.opacity = E.out(seg(t, 1.95, 2.2));
+    rise(to, E.out(seg(t, 1.95, 2.45)));
   };
 }
 
@@ -373,8 +419,8 @@ function tategaki(root) {
   while (layAt(minInner).w > box.w - box.pad * 2 && minInner < 640) minInner += 2;
   const H0 = 800;
   const H1 = minInner + box.pad * 2 + 6;
-  // 最後は「縦書き、禁則、約物、」で折り返す高さにする（語の途中で折り返さない）
-  const H2 = 610;
+  // 最初と最後は、どの段落も読点の後ろか文節で折り返す高さにする（実際のフォントで調べた値。語の途中で折り返さない）
+  const H2 = 700;
 
   return (t) => {
     p(t);
@@ -686,7 +732,7 @@ function outro(root, duration) {
     $("div", { class: "end__npm", html: "<span><i style='font-style:normal;color:var(--code-key)'>$</i> npm install @non-standardworld/stone-engine.js</span>" }, end),
     $("div", { class: "end__tags", html: TAGS.map((tag) => `<span>${tag}</span>`).join("") }, end),
     $("div", { class: "end__url", text: "non-standardworld.github.io/stone_engine_js" }, end),
-    $("div", { class: "end__credit", text: "MIT License  ·  Original: stone_engine by Nihon Design Center" }, end),
+    $("div", { class: "end__credit", text: COPY.credit }, end),
   ];
 
   const typeFrom = 0.4;
@@ -729,13 +775,14 @@ function outro(root, duration) {
 /* ---------- タイムライン ---------- */
 
 const TIMELINE = [
-  { name: "hook", build: hook, start: 0, end: 4.4, step: -1, noIn: true },
-  { name: "tategaki", build: tategaki, start: 4.4, end: 10.0, step: 0 },
-  { name: "kinsoku", build: kinsoku, start: 10.0, end: 15.2, step: 1 },
-  { name: "punct", build: punct, start: 15.2, end: 19.6, step: 2 },
-  { name: "tcy", build: tcy, start: 19.6, end: 23.8, step: 3 },
-  { name: "inspect", build: inspect, start: 23.8, end: 27.8, step: 4 },
-  { name: "outro", build: outro, start: 27.8, end: 34.4, step: -1, noOut: true },
+  { name: "hook", build: hook, start: 0, end: 4.6, step: -1, noIn: true },
+  { name: "lineage", build: lineage, start: 4.6, end: 8.8, step: -1 },
+  { name: "tategaki", build: tategaki, start: 8.8, end: 14.4, step: 0 },
+  { name: "kinsoku", build: kinsoku, start: 14.4, end: 19.6, step: 1 },
+  { name: "punct", build: punct, start: 19.6, end: 24.0, step: 2 },
+  { name: "tcy", build: tcy, start: 24.0, end: 28.2, step: 3 },
+  { name: "inspect", build: inspect, start: 28.2, end: 32.2, step: 4 },
+  { name: "outro", build: outro, start: 32.2, end: 38.8, step: -1, noOut: true },
 ];
 const DURATION = TIMELINE[TIMELINE.length - 1].end;
 /** 使い方からエンドカードへ切り替わる時刻（ヘッダーを消す）。 */
@@ -768,7 +815,7 @@ function seek(time) {
     scene.update(local);
     step = scene.step;
   }
-  const first = TIMELINE[1].start;
+  const first = TIMELINE.find((scene) => scene.step === 0).start;
   header.el.style.opacity = (E.out(seg(t, first, first + 0.4)) * (1 - E.inOut(seg(t, HEADER_OUT, HEADER_OUT + 0.3)))).toFixed(3);
   header.marks.forEach((mark, i) => mark.classList.toggle("on", i === step));
 }

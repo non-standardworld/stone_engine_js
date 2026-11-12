@@ -368,10 +368,75 @@ svg.overlay {
 }
 
 .end__credit {
-  top: 930px;
-  font: 400 24px/1 var(--mono);
-  color: var(--ink-3);
+  top: 926px;
+  font: 500 27px/1 var(--gothic);
+  color: var(--ink-2);
   white-space: pre;
+}
+
+/* ---------- 出自 ---------- */
+
+.lineage__kicker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 266px;
+  text-align: center;
+  font: 500 26px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--accent);
+}
+
+.lineage__row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 674px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 56px;
+}
+
+.lineage__node {
+  text-align: center;
+}
+
+.lineage__mark {
+  font: 500 76px/1 var(--serif);
+  white-space: nowrap;
+}
+
+.lineage__note {
+  margin-top: 26px;
+  font: 500 29px/1 var(--gothic);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.lineage__arrow {
+  position: relative;
+  width: 190px;
+  height: 76px;
+}
+
+.lineage__arrow i {
+  position: absolute;
+  left: 0;
+  right: 14px;
+  top: 44px;
+  height: 3px;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+
+.lineage__arrow b {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  border-left: 20px solid var(--accent);
+  border-top: 11.5px solid transparent;
+  border-bottom: 11.5px solid transparent;
 }
 
 /* ---------- フック ---------- */

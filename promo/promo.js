@@ -287,10 +287,10 @@ function morph(a, b, p, slide = 44) {
 /* ---------- 読む時間 ---------- */
 
 /*
-尺は「1 秒に 4 文字読める」として決める（字幕の目安と同じ）。数えるのは、読ませるための日本語の文（見出し・説明・クレジット）。
-全角は 1 文字、文の中の半角の英数字は 0.5 文字。組版の作例（組んで見せるための文章）、コード、英語のラベル、パッケージ名・コマンド・
-URL は数えず、見るための時間を別に取る（LOOK / HOLD と、各シーンの glance）。
-各シーンは、説明を読み終える時刻（LEAD + 読む時間）のあとで作例を動かし、動かしたあとに HOLD だけ止める。
+尺は「コピーがきちんと読めること」から決める。コピー（見出し・説明・クレジット）を 1 秒に 4 文字で読める時間だけ取り、それ以外は
+短くする。全角は 1 文字、文の中の半角の英数字は 0.5 文字。同じ行が 2 度出るとき（エンドカードの「ブラウザのための…」）は、最初の 1 度だけ数える。
+組版の作例（組んで見せるための文章）、コード、英語のラベル、パッケージ名・コマンド・URL は数えず、見る時間を少しだけ取る（LOOK / HOLD）。
+各シーンは、コピーを読み終える時刻（LEAD + 読む時間）のあとで作例を動かし、動かしたあとに HOLD だけ止める。
 */
 
 /** 1 秒に読める文字数。 */
@@ -300,9 +300,9 @@ const LEAD = 0.6;
 /** シーンの終わりの、消えていく時間（読む時間に数えない）。 */
 const TAIL = 0.3;
 /** 作例が変わる前に、作例を見る時間。 */
-const LOOK = 1.2;
+const LOOK = 0.4;
 /** 作例が変わったあと、結果を見る時間。 */
-const HOLD = 2.2;
+const HOLD = 1.2;
 
 /** 読む文字数。全角は 1 文字、半角は 0.5 文字、空白と改行は数えない。 */
 function readChars(...texts) {
@@ -392,10 +392,10 @@ function hook(root) {
   sub.draw();
 
   // 見出しは 1 秒に 4 文字ずつ置く（置かれるそばから読める）。置き終えてから下の 1 行を出して、それを読む時間を取る
-  const typeFrom = 0.4;
+  const typeFrom = 0.3;
   const typeTo = typeFrom + L.glyphs.length / CPS;
-  const subAt = typeTo + 0.15;
-  const duration = roundUp(subAt + 0.25 + readTime(COPY.sub) + TAIL);
+  const subAt = typeTo + 0.1;
+  const duration = roundUp(subAt + 0.2 + readTime(COPY.sub) + TAIL);
 
   const update = (t) => {
     root.style.transform = `scale(${(1 + 0.012 * (t / duration)).toFixed(5)})`;
@@ -422,7 +422,7 @@ function hook(root) {
 
 /**
  * 出自。日本デザインセンター様から生まれた iOS 用のエンジン stone_engine を継承したことを伝える。
- * promo/assets/stone-site.png（stone のサイトのスクリーンショット）があれば、図の左端に置く。
+ * promo/assets/stone-site.jpg（または .png。stone のサイトの画像）があれば、図の左端に置く。
  */
 function lineage(root, assets) {
   const shot = assets.stoneSite;
@@ -452,6 +452,7 @@ function lineage(root, assets) {
   if (shot) {
     const card = $("div", { class: "lineage__node" }, row);
     const frame = $("div", { class: "lineage__frame" }, card);
+    frame.style.aspectRatio = `${shot.naturalWidth} / ${shot.naturalHeight}`;
     shot.alt = "";
     frame.appendChild(shot);
     $("div", { class: "lineage__note", text: COPY.lineageShot }, card);
@@ -462,13 +463,12 @@ function lineage(root, assets) {
   arrow();
   node("stone-engine.js", COPY.lineageTo);
 
-  // 見出しを読み終えるころに図を出す。図の名前（英字）は見る時間として 2.5 秒、スクリーンショットがあれば、見る時間と注記を読む時間を足す
+  // 見出しを読み終えるまでに図を出し終え、そのあと図を見る時間を 1 秒取る（スクリーンショットがあれば 2.5 秒）
   const readEnd = LEAD + readTime(COPY.lineage);
   const step = 0.75;
-  const drawFrom = readEnd - 0.9;
+  const drawFrom = readEnd - 1.6;
   const drawn = drawFrom + (nodes.length - 1) * step + 0.5;
-  const glance = 2.5 + (shot ? 1.5 + readTime(COPY.lineageShot) : 0);
-  const duration = roundUp(drawn + glance + TAIL);
+  const duration = roundUp(Math.max(drawn, readEnd) + (shot ? 2.5 : 1.0) + TAIL);
 
   const update = (t) => {
     root.style.transform = `scale(${(1 + 0.012 * (t / duration)).toFixed(5)})`;
@@ -488,9 +488,7 @@ function lineage(root, assets) {
       head.style.opacity = E.out(seg(t, t0 + 0.45, t0 + 0.7));
     });
   };
-  const counted = [["見出し", readChars(COPY.lineage)]];
-  if (shot) counted.push(["スクリーンショットの注記", readChars(COPY.lineageShot)]);
-  return { update, duration, counted };
+  return { update, duration, counted: [["見出し", readChars(COPY.lineage)]] };
 }
 
 /** 01 縦書き。紙の高さを変えて、そのたびに組み直す。 */
@@ -517,13 +515,13 @@ function tategaki(root) {
   const H2 = 700;
 
   // 説明を読み終えてから、紙を縮めて、戻す
-  const moveFrom = LEAD + p.read + 0.6;
-  const duration = roundUp(moveFrom + 2.9 + HOLD + TAIL);
+  const moveFrom = LEAD + p.read + 0.3;
+  const duration = roundUp(moveFrom + 2.4 + HOLD + TAIL);
 
   const update = (t) => {
     p(t);
-    let h = lerp(H0, H1, E.inOut(seg(t, moveFrom, moveFrom + 1.2)));
-    h = lerp(h, H2, E.inOut(seg(t, moveFrom + 1.8, moveFrom + 2.9)));
+    let h = lerp(H0, H1, E.inOut(seg(t, moveFrom, moveFrom + 1.0)));
+    h = lerp(h, H2, E.inOut(seg(t, moveFrom + 1.4, moveFrom + 2.4)));
     const inner = Math.round(h - box.pad * 2);
     const L = layAt(inner);
     st.setLayout(L).place(box.x + box.w - box.pad - L.w, box.y + box.pad);
@@ -536,7 +534,7 @@ function tategaki(root) {
     grip.style.top = `${box.y + h - 5}px`;
     dim.style.top = `${box.y + h + 24}px`;
     dim.textContent = `height={${inner}}`;
-    const ui = E.out(seg(t, moveFrom - 0.6, moveFrom - 0.1));
+    const ui = E.out(seg(t, moveFrom - 0.5, moveFrom));
     grip.style.opacity = ui;
     dim.style.opacity = ui;
   };
@@ -758,12 +756,12 @@ function inspect(root) {
   const to = centre("取");
   let last = -1;
 
-  // 説明を読み終えてから、矩形を描き、点を動かす。点が止まってから、カードの注記を読む時間を取る
+  // 説明を読み終えてから、矩形を描き、点を動かす。点が止まってから、カードを見る時間を取る
   const frameFrom = LEAD + p.read + 0.1;
-  const onFrom = frameFrom + 0.9;
-  const moveFrom = onFrom + 0.5;
-  const moveTo = moveFrom + 2.0;
-  const duration = roundUp(moveTo + Math.max(HOLD, readTime(COPY.tipComment) + 0.5) + TAIL);
+  const onFrom = frameFrom + 0.6;
+  const moveFrom = onFrom + 0.3;
+  const moveTo = moveFrom + 1.6;
+  const duration = roundUp(moveTo + HOLD + 0.4 + TAIL);
 
   const update = (t) => {
     p(t);
@@ -814,7 +812,7 @@ function inspect(root) {
     leader.setAttribute("y2", (oy + f.y + f.height / 2).toFixed(2));
     leader.setAttribute("opacity", (0.8 * on).toFixed(3));
   };
-  return { update, duration, counted: [...p.counted, ["カードの注記", readChars(COPY.tipComment)]] };
+  return { update, duration, counted: p.counted };
 }
 
 /** 使い方とエンドカード。 */
@@ -863,15 +861,16 @@ function outro(root) {
     $("div", { class: "end__credit", text: COPY.credit }, end),
   ];
 
-  // 使い方: 見出しを読み終えるころにコードを打ち始め、組んだ結果を出して、コードと結果を見る時間（3 秒）を取る
-  const typeFrom = LEAD + readTime(COPY.usageTitle) - 0.3;
-  const typeTo = typeFrom + 2.0;
+  // 使い方: 見出しを読み終えるころにコードを打ち始め、組んだ結果を出して、コードと結果を見る時間（1.5 秒）を取る
+  const typeFrom = LEAD + readTime(COPY.usageTitle) - 0.5;
+  const typeTo = typeFrom + 1.5;
   const resultFrom = typeTo - 0.3;
   const resultStep = 0.022;
-  const cut = resultFrom + novel.glyphs.length * resultStep + 0.3 + 3.0;
-  // エンドカード: 日本語の 2 行を読む時間に、パッケージ名・コマンド・タグ・URL を見る時間（3.5 秒）を足す
+  const cut = resultFrom + novel.glyphs.length * resultStep + 0.3 + 1.5;
+  // エンドカード: クレジットを読む時間に、パッケージ名・コマンド・URL を見る時間（1.5 秒）を足す。
+  // 「ブラウザのための日本語組版エンジン」はフックで読んだ行の繰り返しなので、数えない
   const cardFrom = cut + 0.8;
-  const duration = roundUp(cardFrom + readTime(COPY.sub, COPY.credit) + 3.5);
+  const duration = roundUp(cardFrom + readTime(COPY.credit) + 1.5);
 
   const update = (t) => {
     /* 使い方 */
@@ -910,7 +909,7 @@ function outro(root) {
     headerOut: cut,
     counted: [
       ["使い方の見出し", readChars(COPY.usageTitle)],
-      ["エンドカードの 2 行", readChars(COPY.sub, COPY.credit)],
+      ["エンドカードのクレジット", readChars(COPY.credit)],
     ],
   };
 }
@@ -989,7 +988,7 @@ async function boot() {
   measurer = getSharedCanvasMeasurer();
   measurer.invalidate();
   // 任意の素材。リポジトリには入れていない（権利のある画像を置いたときだけ使う）
-  const assets = { stoneSite: await loadImage("./assets/stone-site.png") };
+  const assets = { stoneSite: (await loadImage("./assets/stone-site.jpg")) ?? (await loadImage("./assets/stone-site.png")) };
 
   let at = 0;
   for (const scene of TIMELINE) {

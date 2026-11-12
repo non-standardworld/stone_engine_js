@@ -413,7 +413,7 @@ svg.overlay {
   white-space: nowrap;
 }
 
-/* stone のサイトのスクリーンショットを置くとき（promo/assets/stone-site.png があるとき）の配置 */
+/* stone のサイトの画像を置くとき（promo/assets/stone-site.jpg があるとき）の配置。枠の高さは画像の縦横比から決まる */
 
 .lineage--shot .lineage__kicker {
   top: 142px;
@@ -434,8 +434,7 @@ svg.overlay {
 }
 
 .lineage__frame {
-  width: 592px;
-  height: 370px;
+  width: 640px;
   box-sizing: border-box;
   overflow: hidden;
   border: 2px solid var(--line);

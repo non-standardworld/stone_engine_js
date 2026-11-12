@@ -1,6 +1,7 @@
 import { StoneText, type StoneTextProps } from "@non-standardworld/stone-engine.js/react";
 import { CodeBlock } from "./CodeBlock";
 import { Playground } from "./Playground";
+import { PromoVideo } from "./PromoVideo";
 import { Sample } from "./Sample";
 import * as S from "./snippets";
 
@@ -97,6 +98,14 @@ export function App() {
               style={{ height: "100%" }}
             />
           </div>
+        </section>
+
+        <section className="section" id="movie">
+          <h2>動画で見る</h2>
+          <p className="lead">
+            縦書き、禁則処理、約物の詰め、縦中横を、1 分あまりの動画にまとめました。動画の中の文字も、このエンジンで組んでいます。音は出ません。
+          </p>
+          <PromoVideo />
         </section>
 
         <section className="section" id="features">

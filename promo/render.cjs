@@ -1,7 +1,7 @@
 /*
 render.cjs — promo/index.html を 1 フレームずつ撮って MP4 にする。
 
-  node promo/render.cjs                       動画を書き出す（promo/out/stone-engine-promo.mp4）
+  node promo/render.cjs                       動画を書き出す（promo/out/stone-engine-promo.mp4 と、ポスターの -poster.jpg）
   node promo/render.cjs --stills 0,2.5,12     指定した時刻（秒）の静止画だけを書き出す
   node promo/render.cjs --serve               プレビュー用の静的サーバーを立てる（ブラウザで再生して確かめる）
 
@@ -215,6 +215,16 @@ async function main() {
     );
     if (ffmpeg.status !== 0) throw new Error("ffmpeg が失敗しました");
     console.log(outFile);
+
+    // ポスター（サイトで、再生が始まる前に見せる 1 枚）。フックの見出しと下の 1 行が出そろったところ
+    const posterFile = outFile.replace(/\.mp4$/, "") + "-poster.jpg";
+    const poster = spawnSync(
+      "ffmpeg",
+      ["-y", "-loglevel", "error", "-ss", String(info.timeline[0].end - 0.6), "-i", outFile, "-frames:v", "1", "-q:v", "3", posterFile],
+      { stdio: "inherit" },
+    );
+    if (poster.status !== 0) throw new Error("ポスターの書き出しに失敗しました");
+    console.log(posterFile);
     console.log(`frames: ${frameDir}`);
   } finally {
     await browser.close();

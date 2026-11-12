@@ -241,6 +241,19 @@ pre code {
   margin-bottom: 4px;
 }
 
+/* ---------- promo video ---------- */
+
+/* 紹介動画。幅いっぱいに置き、読み込む前から 16:9 の場所を取っておく（下の内容が動かないように） */
+.promo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+}
+
 /* ---------- samples ---------- */
 
 .samples {

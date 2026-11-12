@@ -1,0 +1,508 @@
+/* プロモーション動画のステージ。1920×1080 の固定サイズで組み、プレビューでは縮小して見せる。 */
+
+:root {
+  --paper: #f7f4ee;
+  --paper-2: #fffdf9;
+  --ink: #1f1d1a;
+  --ink-2: #4a4641;
+  --ink-3: #8a847c;
+  --line: #ddd7cc;
+  --accent: #b8452f;
+  --accent-soft: #f3dcd5;
+  --code-bg: #26231f;
+  --code-ink: #efe9df;
+  --code-key: #e9a48f;
+  --code-str: #e3cf94;
+  --code-dim: #8f887d;
+  --serif: "EB Garamond", "Shippori Mincho", serif;
+  --mincho: "Shippori Mincho", serif;
+  --gothic: "Zen Kaku Gothic New", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #141210;
+}
+
+body.capture {
+  background: var(--paper);
+}
+
+#stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  transform-origin: 0 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+/* エンジンの結果を描く SVG。文字の位置はエンジンが決めるので、ブラウザ側の詰めや合字は切る。 */
+svg.st {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  font-kerning: none;
+  font-variant: none;
+  font-feature-settings: normal;
+  writing-mode: horizontal-tb;
+  direction: ltr;
+  text-anchor: start;
+  dominant-baseline: auto;
+}
+
+svg.st text {
+  white-space: pre;
+}
+
+svg.overlay {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+/* ---------- header ---------- */
+
+#header {
+  position: absolute;
+  left: 120px;
+  right: 120px;
+  top: 64px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#header .brand {
+  font: 500 38px/1 var(--serif);
+  letter-spacing: 0.01em;
+}
+
+#header .steps {
+  display: flex;
+  gap: 10px;
+}
+
+#header .steps i {
+  width: 52px;
+  height: 4px;
+  background: var(--line);
+}
+
+#header .steps i.on {
+  background: var(--accent);
+}
+
+/* ---------- feature panel ---------- */
+
+.panel {
+  position: absolute;
+  left: 120px;
+  top: 230px;
+  width: 620px;
+}
+
+.panel__no {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  font: 500 30px/1 var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.panel__rule {
+  position: absolute;
+  left: 66px;
+  top: 14px;
+  width: 96px;
+  height: 2px;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+
+.panel__en {
+  position: absolute;
+  left: 4px;
+  top: 190px;
+  font: 500 24px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.chip {
+  position: absolute;
+  left: 0;
+  top: 540px;
+  display: inline-grid;
+  padding: 20px 28px;
+  border-radius: 14px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font: 500 30px/1.2 var(--mono);
+  white-space: pre;
+}
+
+.chip > span {
+  grid-area: 1 / 1;
+}
+
+.chip i,
+.code i,
+.tip i {
+  font-style: normal;
+  color: var(--code-key);
+}
+
+.chip b,
+.code b,
+.tip b {
+  font-weight: inherit;
+  color: var(--code-str);
+}
+
+.code u,
+.tip u {
+  text-decoration: none;
+  color: var(--code-dim);
+}
+
+.tip em {
+  font-style: normal;
+  font-family: var(--gothic);
+  color: var(--code-dim);
+}
+
+/* コードは合字にしない（=> を矢印にしない） */
+.chip,
+.code,
+.tip,
+.dim,
+.end__npm {
+  font-variant-ligatures: none;
+}
+
+/* ---------- 01 縦書き ---------- */
+
+.page {
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--paper-2);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 24px 48px -30px rgba(70, 50, 30, 0.35);
+}
+
+.grip {
+  position: absolute;
+  width: 132px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.dim {
+  position: absolute;
+  font: 500 28px/1 var(--mono);
+  color: var(--accent);
+  white-space: pre;
+}
+
+/* ---------- 02 禁則処理 ---------- */
+
+.guide-label {
+  position: absolute;
+  font: 700 26px/1 var(--gothic);
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* ---------- 05 1 文字ずつ ---------- */
+
+.tip {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 34px 40px;
+  border-radius: 18px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font: 400 28px/1.62 var(--mono);
+  white-space: pre;
+}
+
+/* ---------- 使い方 ---------- */
+
+.use {
+  position: absolute;
+  inset: 0;
+}
+
+.use__kicker {
+  position: absolute;
+  left: 124px;
+  top: 206px;
+  font: 500 24px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--accent);
+}
+
+.code {
+  position: absolute;
+  left: 120px;
+  top: 410px;
+  width: 1160px;
+  height: 480px;
+  box-sizing: border-box;
+  padding: 62px 60px;
+  border-radius: 20px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font: 400 32px/1.7 var(--mono);
+  white-space: pre;
+}
+
+.code span {
+  visibility: hidden;
+}
+
+.code span.on {
+  visibility: visible;
+}
+
+.code .caret {
+  display: inline-block;
+  width: 0;
+  visibility: visible;
+}
+
+.code .caret::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 38px;
+  margin-top: 8px;
+  background: var(--code-key);
+}
+
+/* ---------- エンドカード ---------- */
+
+.end {
+  position: absolute;
+  inset: 0;
+}
+
+.end > * {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+
+.end__kicker {
+  top: 176px;
+  font: 500 26px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--accent);
+}
+
+.end__mark {
+  top: 226px;
+  font: 500 176px/1 var(--serif);
+  letter-spacing: -0.005em;
+}
+
+.end__npm {
+  top: 566px;
+}
+
+.end__npm span {
+  display: inline-block;
+  padding: 30px 46px;
+  border-radius: 18px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font: 500 40px/1 var(--mono);
+  white-space: pre;
+}
+
+.end__tags {
+  top: 722px;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.end__tags span {
+  padding: 12px 24px 14px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  font: 500 30px/1 var(--gothic);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.end__url {
+  top: 838px;
+  font: 500 34px/1 var(--mono);
+  color: var(--accent);
+}
+
+.end__credit {
+  top: 922px;
+  font: 500 32px/1 var(--gothic);
+  color: var(--ink-2);
+  white-space: pre;
+}
+
+/* ---------- 出自 ---------- */
+
+.lineage__kicker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 266px;
+  text-align: center;
+  font: 500 26px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--accent);
+}
+
+.lineage__row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 674px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 56px;
+}
+
+.lineage__node {
+  text-align: center;
+}
+
+.lineage__mark {
+  font: 500 76px/1 var(--serif);
+  white-space: nowrap;
+}
+
+.lineage__note {
+  margin-top: 26px;
+  font: 500 29px/1 var(--gothic);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* stone のサイトの画像を置くとき（promo/assets/stone-site.jpg があるとき）の配置。枠の高さは画像の縦横比から決まる */
+
+.lineage--shot .lineage__kicker {
+  top: 142px;
+}
+
+.lineage--shot .lineage__row {
+  top: 478px;
+  align-items: center;
+  gap: 36px;
+}
+
+.lineage--shot .lineage__mark {
+  font-size: 58px;
+}
+
+.lineage--shot .lineage__arrow {
+  width: 120px;
+}
+
+.lineage__frame {
+  width: 640px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-2);
+  box-shadow: 0 24px 48px -30px rgba(70, 50, 30, 0.35);
+}
+
+.lineage__frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.lineage__arrow {
+  position: relative;
+  width: 190px;
+  height: 76px;
+}
+
+.lineage__arrow i {
+  position: absolute;
+  left: 0;
+  right: 14px;
+  top: 44px;
+  height: 3px;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+
+.lineage__arrow b {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  border-left: 20px solid var(--accent);
+  border-top: 11.5px solid transparent;
+  border-bottom: 11.5px solid transparent;
+}
+
+/* ---------- フック ---------- */
+
+.hook__rule {
+  position: absolute;
+  left: 144px;
+  top: 354px;
+  width: 120px;
+  height: 3px;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+
+.hook__kicker {
+  position: absolute;
+  left: 144px;
+  top: 390px;
+  font: 500 26px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.hook__mark {
+  position: absolute;
+  left: 136px;
+  top: 436px;
+  font: 500 138px/1 var(--serif);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}

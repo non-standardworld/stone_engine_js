@@ -100,6 +100,11 @@ async function openPage(context) {
   await page.waitForFunction(() => window.__ready || window.__error, null, { timeout: 60000 });
   const error = await page.evaluate(() => window.__error);
   if (error) throw new Error(error);
+  // フォントは、撮るページごとに確かめる（並列に撮るページのどれか 1 つだけが Google Fonts を取れなくても、
+  // そのページが撮るフレームが代替フォントのまま動画に入るので、書き出しを止める）
+  const fonts = await page.evaluate(() => window.__fonts);
+  const missing = fonts.filter(([, ok]) => !ok).map(([spec]) => spec);
+  if (missing.length > 0) throw new Error(`読み込めなかったフォント: ${missing.join(", ")}`);
   return { page };
 }
 
@@ -133,11 +138,8 @@ async function main() {
       fps: window.__fps,
       frames: window.__frames,
       duration: window.__duration,
-      fonts: window.__fonts,
       timeline: window.__timeline,
     }));
-    const missing = info.fonts.filter(([, ok]) => !ok).map(([spec]) => spec);
-    if (missing.length > 0) throw new Error(`読み込めなかったフォント: ${missing.join(", ")}`);
 
     // シーンごとの長さと、読む文字数（1 秒 4 文字で読むのにかかる秒数）
     for (const scene of info.timeline) {

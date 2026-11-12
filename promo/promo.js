@@ -147,9 +147,11 @@ async function loadFonts() {
   for (let c = 0x20; c < 0x7f; c++) ascii += String.fromCharCode(c);
   const text =
     Object.values(COPY).join("") + FEATURES.map((f) => f.title + f.desc).join("") + TAGS.join("") + "行頭…→" + ascii;
-  await Promise.all(FONT_SPECS.map((spec) => document.fonts.load(spec, text)));
+  // 一致するフォントが定義されていないとき（Google Fonts の CSS を取れなかったときなど）、load() は空の配列を返し、check() は true を返す。
+  // 読み込めた書体が 1 つも無い指定は、読み込めなかったものとして扱う（render.cjs が、代替フォントのまま書き出さずに止める）
+  const loaded = await Promise.all(FONT_SPECS.map((spec) => document.fonts.load(spec, text)));
   await document.fonts.ready;
-  window.__fonts = FONT_SPECS.map((spec) => [spec, document.fonts.check(spec, text)]);
+  window.__fonts = FONT_SPECS.map((spec, i) => [spec, loaded[i].length > 0 && document.fonts.check(spec, text)]);
 }
 
 /* ---------- 小さな道具 ---------- */

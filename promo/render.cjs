@@ -50,7 +50,12 @@ function args() {
 
 /** リポジトリの中のファイルだけを返す（promo/ と dist/）。 */
 function readAsset(urlPath) {
-  const relative = decodeURIComponent(urlPath).replace(/^\/+/, "");
+  let relative;
+  try {
+    relative = decodeURIComponent(urlPath).replace(/^\/+/, "");
+  } catch {
+    return null; // 不正な % エスケープ（"/promo/%" など）。見つからないものとして扱う
+  }
   const file = path.resolve(ROOT, relative);
   const allowed = [path.join(ROOT, "promo") + path.sep, path.join(ROOT, "dist") + path.sep];
   if (!allowed.some((dir) => file.startsWith(dir))) return null;
@@ -200,6 +205,8 @@ async function main() {
         "-color_range", "tv",
         "-c:a", "aac",
         "-b:a", "128k",
+        // 置き場所に前回の（もっと長い）書き出しの連番が残っていても、今回撮った枚数だけを使う
+        "-frames:v", String(info.frames),
         "-shortest",
         "-movflags", "+faststart",
         outFile,

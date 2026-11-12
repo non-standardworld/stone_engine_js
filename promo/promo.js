@@ -300,9 +300,9 @@ const LEAD = 0.6;
 /** シーンの終わりの、消えていく時間（読む時間に数えない）。 */
 const TAIL = 0.3;
 /** 作例が変わる前に、作例を見る時間。 */
-const LOOK = 0.4;
+const LOOK = 0.3;
 /** 作例が変わったあと、結果を見る時間。 */
-const HOLD = 1.2;
+const HOLD = 1.0;
 
 /** 読む文字数。全角は 1 文字、半角は 0.5 文字、空白と改行は数えない。 */
 function readChars(...texts) {
@@ -463,12 +463,11 @@ function lineage(root, assets) {
   arrow();
   node("stone-engine.js", COPY.lineageTo);
 
-  // 見出しを読み終えるまでに図を出し終え、そのあと図を見る時間を 1 秒取る（スクリーンショットがあれば 2.5 秒）
+  // 見出しを読み終える時刻に図を出し終え、そのあと図を見る時間を 1 秒取る（画像があれば 1.5 秒）
   const readEnd = LEAD + readTime(COPY.lineage);
   const step = 0.75;
-  const drawFrom = readEnd - 1.6;
-  const drawn = drawFrom + (nodes.length - 1) * step + 0.5;
-  const duration = roundUp(Math.max(drawn, readEnd) + (shot ? 2.5 : 1.0) + TAIL);
+  const drawFrom = readEnd - ((nodes.length - 1) * step + 0.5);
+  const duration = roundUp(readEnd + (shot ? 1.5 : 1.0) + TAIL);
 
   const update = (t) => {
     root.style.transform = `scale(${(1 + 0.012 * (t / duration)).toFixed(5)})`;
@@ -516,12 +515,12 @@ function tategaki(root) {
 
   // 説明を読み終えてから、紙を縮めて、戻す
   const moveFrom = LEAD + p.read + 0.3;
-  const duration = roundUp(moveFrom + 2.4 + HOLD + TAIL);
+  const duration = roundUp(moveFrom + 2.0 + HOLD + TAIL);
 
   const update = (t) => {
     p(t);
-    let h = lerp(H0, H1, E.inOut(seg(t, moveFrom, moveFrom + 1.0)));
-    h = lerp(h, H2, E.inOut(seg(t, moveFrom + 1.4, moveFrom + 2.4)));
+    let h = lerp(H0, H1, E.inOut(seg(t, moveFrom, moveFrom + 0.9)));
+    h = lerp(h, H2, E.inOut(seg(t, moveFrom + 1.1, moveFrom + 2.0)));
     const inner = Math.round(h - box.pad * 2);
     const L = layAt(inner);
     st.setLayout(L).place(box.x + box.w - box.pad - L.w, box.y + box.pad);
@@ -579,11 +578,11 @@ function kinsoku(root) {
   );
   const label = $("div", { class: "guide-label", text: "行頭", style: { left: `${ox - 62}px`, top: `${oy - 52}px` } }, root);
 
-  // 説明を読み終えてから、行頭の文字に印を付け、それを見る時間を置いて、禁則を効かせる
-  const popFrom = LEAD + p.read + 0.1;
-  const popStep = 0.28;
+  // 説明を読み終えるころに、行頭の文字に印を付け、それを見る時間を置いて、禁則を効かせる
+  const popFrom = LEAD + p.read - 0.4;
+  const popStep = 0.2;
   const morphFrom = popFrom + (offenders.length - 1) * popStep + 0.35 + LOOK;
-  const morphTo = morphFrom + 0.9;
+  const morphTo = morphFrom + 0.8;
   const duration = roundUp(morphTo + HOLD + TAIL);
 
   const update = (t) => {
@@ -658,10 +657,10 @@ function punct(root) {
     };
   });
 
-  // 説明を読み終えてから、約物の箱を出し、それを見る時間を置いて、詰める
-  const showFrom = LEAD + p.read + 0.1;
+  // 説明を読み終えるころに、約物の箱を出し、それを見る時間を置いて、詰める
+  const showFrom = LEAD + p.read - 0.3;
   const morphFrom = showFrom + 0.5 + LOOK;
-  const morphTo = morphFrom + 0.9;
+  const morphTo = morphFrom + 0.8;
   const duration = roundUp(morphTo + HOLD + TAIL);
 
   const update = (t) => {
@@ -702,7 +701,7 @@ function tcy(root) {
 
   // 説明を読み終えてから、作例を見る時間を置いて、数字を起こす
   const morphFrom = LEAD + p.read + LOOK;
-  const morphTo = morphFrom + 0.9;
+  const morphTo = morphFrom + 0.8;
   const duration = roundUp(morphTo + HOLD + TAIL);
 
   const update = (t) => {
@@ -756,11 +755,11 @@ function inspect(root) {
   const to = centre("取");
   let last = -1;
 
-  // 説明を読み終えてから、矩形を描き、点を動かす。点が止まってから、カードを見る時間を取る
-  const frameFrom = LEAD + p.read + 0.1;
-  const onFrom = frameFrom + 0.6;
-  const moveFrom = onFrom + 0.3;
-  const moveTo = moveFrom + 1.6;
+  // 説明を読み終えるころに、矩形を描き、点を動かす。点が止まってから、カードを見る時間を取る
+  const frameFrom = LEAD + p.read - 0.3;
+  const onFrom = frameFrom + 0.5;
+  const moveFrom = onFrom + 0.2;
+  const moveTo = moveFrom + 1.4;
   const duration = roundUp(moveTo + HOLD + 0.4 + TAIL);
 
   const update = (t) => {
@@ -861,16 +860,16 @@ function outro(root) {
     $("div", { class: "end__credit", text: COPY.credit }, end),
   ];
 
-  // 使い方: 見出しを読み終えるころにコードを打ち始め、組んだ結果を出して、コードと結果を見る時間（1.5 秒）を取る
-  const typeFrom = LEAD + readTime(COPY.usageTitle) - 0.5;
-  const typeTo = typeFrom + 1.5;
+  // 使い方: 見出しを読み終えるころにコードを打ち始め、組んだ結果を出して、コードと結果を見る時間（1 秒）を取る
+  const typeFrom = LEAD + readTime(COPY.usageTitle) - 0.7;
+  const typeTo = typeFrom + 1.2;
   const resultFrom = typeTo - 0.3;
   const resultStep = 0.022;
-  const cut = resultFrom + novel.glyphs.length * resultStep + 0.3 + 1.5;
-  // エンドカード: クレジットを読む時間に、パッケージ名・コマンド・URL を見る時間（1.5 秒）を足す。
+  const cut = resultFrom + novel.glyphs.length * resultStep + 0.3 + 1.0;
+  // エンドカード: クレジットを読む時間に、パッケージ名・コマンド・URL を見る時間（1 秒）を足す。
   // 「ブラウザのための日本語組版エンジン」はフックで読んだ行の繰り返しなので、数えない
-  const cardFrom = cut + 0.8;
-  const duration = roundUp(cardFrom + readTime(COPY.credit) + 1.5);
+  const cardFrom = cut + 0.6;
+  const duration = roundUp(cardFrom + readTime(COPY.credit) + 1.0);
 
   const update = (t) => {
     /* 使い方 */

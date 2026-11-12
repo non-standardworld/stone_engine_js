@@ -31,6 +31,8 @@ const TYPES = {
   ".css": "text/css; charset=utf-8",
   ".map": "application/json",
   ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
 };
 
 function args() {
@@ -127,9 +129,20 @@ async function main() {
       frames: window.__frames,
       duration: window.__duration,
       fonts: window.__fonts,
+      timeline: window.__timeline,
     }));
     const missing = info.fonts.filter(([, ok]) => !ok).map(([spec]) => spec);
     if (missing.length > 0) throw new Error(`読み込めなかったフォント: ${missing.join(", ")}`);
+
+    // シーンごとの長さと、読む文字数（1 秒 4 文字で読むのにかかる秒数）
+    for (const scene of info.timeline) {
+      const chars = scene.counted.reduce((sum, [, count]) => sum + count, 0);
+      const parts = scene.counted.map(([label, count]) => `${label} ${count}`).join("、");
+      console.log(
+        `${scene.name.padEnd(9)} ${scene.start.toFixed(1).padStart(5)} – ${scene.end.toFixed(1).padStart(5)}  ${(scene.end - scene.start).toFixed(1).padStart(4)} 秒  読む文字 ${String(chars).padStart(4)}（${(chars / 4).toFixed(1)} 秒）  ${parts}`,
+      );
+    }
+    console.log(`合計 ${info.duration.toFixed(1)} 秒（${info.frames} フレーム）`);
 
     if (options.stills) {
       const dir = path.resolve(options.frames ?? fs.mkdtempSync(path.join(os.tmpdir(), "stone-promo-stills-")));

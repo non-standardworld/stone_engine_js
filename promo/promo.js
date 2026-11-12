@@ -2,6 +2,7 @@
 promo.js — プロモーション動画のタイムライン。
 
 日本語の作例はすべて、このパッケージの layoutText() で組み、glyphElements() が返す 1 文字ごとの位置を SVG に描いている。
+各シーンの長さは、読ませる文の文字数から決める（1 秒に 4 文字。「読む時間」の節）。
 動きは時刻 t（秒）だけで決まる（seek(t) が全シーンの状態を作り直す）ので、render.cjs が 1 フレームずつ seek して
 スクリーンショットを撮れば、何度書き出しても同じ動画になる。ブラウザで開いたときは、そのまま再生する（スペースで一時停止、
 ←→ で 1 フレーム、Shift+←→ で 1 秒）。
@@ -32,11 +33,11 @@ const COPY = {
   sub: "ブラウザのための日本語組版エンジン",
   vertical:
     "印刷物基準の文字組みを、ウェブの世界で。\n縦書き、縦中横、約物、禁則。\nstone-engine.jsは、それらをWebフォントのまま、ブラウザの上で組み直す。",
-  lineage: "日本デザインセンターから生まれた\niOS用文字組みエンジンを継承。",
-  lineageName: "日本デザインセンター",
-  lineageFrom: "日本デザインセンター ／ iOS・Swift",
-  lineageTo: "ウェブ ／ JavaScript・TypeScript",
-  credit: "日本デザインセンターから生まれた iOS 用文字組みエンジン stone_engine を継承  ・  MIT License",
+  lineage: "日本デザインセンター様から生まれた\niOS用文字組みエンジンを継承。",
+  lineageFrom: "iOS / Swift",
+  lineageTo: "Web / TypeScript",
+  lineageShot: "stone ｜ 日本デザインセンター様",
+  credit: "日本デザインセンター様の stone_engine を継承",
   kinsoku: "行頭に句読点を置かない。毎朝のおいしいコーヒーも、「ちょっと待って」も、行頭に来ない。",
   punct: "「約物」の連続（『』）は、\n前後を見て、「自然」に詰める。",
   tcy: "2026年11月12日、\n午前10時30分、\nRoom 205に集合。",
@@ -84,7 +85,7 @@ const FEATURES = [
   },
 ];
 
-const TAGS = ["縦書き", "禁則処理", "約物の詰め", "縦中横", "均等配置", "React", "SSR", "TypeScript"];
+const TAGS = ["React", "SSR", "TypeScript", "MIT License"];
 
 const CODE = [
   ["i", "import"],
@@ -281,8 +282,45 @@ function morph(a, b, p, slide = 44) {
   return { x: b.x - slide * (1 - q), y: b.y, opacity: q };
 }
 
+/* ---------- 読む時間 ---------- */
+
+/*
+尺は「1 秒に 4 文字読める」として決める（字幕の目安と同じ）。数えるのは、読ませるための日本語の文（見出し・説明・クレジット）。
+全角は 1 文字、文の中の半角の英数字は 0.5 文字。組版の作例（組んで見せるための文章）、コード、英語のラベル、パッケージ名・コマンド・
+URL は数えず、見るための時間を別に取る（LOOK / HOLD と、各シーンの glance）。
+各シーンは、説明を読み終える時刻（LEAD + 読む時間）のあとで作例を動かし、動かしたあとに HOLD だけ止める。
+*/
+
+/** 1 秒に読める文字数。 */
+const CPS = 4;
+/** シーンが出てから、文字が読める濃さになるまでの時間。 */
+const LEAD = 0.6;
+/** シーンの終わりの、消えていく時間（読む時間に数えない）。 */
+const TAIL = 0.3;
+/** 作例が変わる前に、作例を見る時間。 */
+const LOOK = 1.2;
+/** 作例が変わったあと、結果を見る時間。 */
+const HOLD = 2.2;
+
+/** 読む文字数。全角は 1 文字、半角は 0.5 文字、空白と改行は数えない。 */
+function readChars(...texts) {
+  let count = 0;
+  for (const text of texts) {
+    for (const ch of text) {
+      if (/\s/.test(ch)) continue;
+      count += ch.codePointAt(0) < 0x80 ? 0.5 : 1;
+    }
+  }
+  return count;
+}
+
+const readTime = (...texts) => readChars(...texts) / CPS;
+/** シーンの長さを 0.1 秒単位に切り上げる。 */
+const roundUp = (seconds) => Math.ceil(seconds * 10 - 1e-6) / 10;
+
 /* ---------- 左の説明 ---------- */
 
+/** 機能のシーンの左の説明。返す関数の read は、見出しと説明を読むのにかかる秒数。 */
 function panel(root, f) {
   const el = $("div", { class: "panel" }, root);
   const no = $("div", { class: "panel__no", text: f.no }, el);
@@ -297,7 +335,7 @@ function panel(root, f) {
   const a = $("span", { html: f.chip[0] }, chip);
   const b = f.chip[1] ? $("span", { html: f.chip[1] }, chip) : null;
 
-  return (t, swap = 0) => {
+  const update = (t, swap = 0) => {
     no.style.opacity = E.out(seg(t, 0.05, 0.4));
     rule.style.transform = `scaleX(${E.out(seg(t, 0.1, 0.7))})`;
     title.draw((g, i) => {
@@ -319,11 +357,19 @@ function panel(root, f) {
       b.style.transform = `translateY(${22 * (1 - swap)}px)`;
     }
   };
+  update.read = readTime(f.title, f.desc);
+  update.counted = [["見出しと説明", readChars(f.title, f.desc)]];
+  return update;
 }
 
 /* ---------- シーン ---------- */
 
-/** 00 フック。原稿用紙のますに、見出しを 1 文字ずつ置く。 */
+/*
+シーンを作る関数は { update, duration, counted } を返す。update(t) はシーンの中の時刻 t（秒）の状態を作る。duration はシーンの長さ、
+counted は読む文字数の内訳（書き出しのときに表にして出す）。
+*/
+
+/** フック。原稿用紙のますに、見出しを読む速さで 1 文字ずつ置く。 */
 function hook(root) {
   const L = lay(
     COPY.hook,
@@ -340,63 +386,109 @@ function hook(root) {
   const rule = $("div", { class: "hook__rule" }, root);
   $("div", { class: "hook__kicker", text: "JAPANESE TYPESETTING FOR THE WEB" }, root);
   $("div", { class: "hook__mark", text: "stone-engine.js" }, root);
-  new Stone(root)
-    .setLayout(lay(COPY.sub, { fontSize: 46, fonts: F.mincho }))
-    .place(144, 618)
-    .draw();
-  const npm = $("div", { class: "hook__npm", text: "npm i @non-standardworld/stone-engine.js" }, root);
+  const sub = new Stone(root).setLayout(lay(COPY.sub, { fontSize: 46, fonts: F.mincho })).place(144, 618);
+  sub.draw();
 
-  return (t) => {
+  // 見出しは 1 秒に 4 文字ずつ置く（置かれるそばから読める）。置き終えてから下の 1 行を出して、それを読む時間を取る
+  const typeFrom = 0.4;
+  const typeTo = typeFrom + L.glyphs.length / CPS;
+  const subAt = typeTo + 0.15;
+  const duration = roundUp(subAt + 0.25 + readTime(COPY.sub) + TAIL);
+
+  const update = (t) => {
+    root.style.transform = `scale(${(1 + 0.012 * (t / duration)).toFixed(5)})`;
     rule.style.transform = `scaleX(${E.out(seg(t, 0, 0.8))})`;
     st.draw((g, i) => {
-      const t0 = 0.3 + i * 0.08 + g.line * 0.14;
+      const t0 = typeFrom + i / CPS;
       const p = E.out(seg(t, t0, t0 + 0.34));
       return { opacity: p, y: g.y - 30 * (1 - p) };
     });
-    cells.setAttribute("opacity", (1 - E.inOut(seg(t, 2.9, 3.6))).toFixed(3));
-    npm.style.opacity = E.out(seg(t, 2.5, 3.1));
+    cells.setAttribute("opacity", (1 - E.inOut(seg(t, typeTo + 0.5, typeTo + 1.3))).toFixed(3));
+    const s = E.out(seg(t, subAt, subAt + 0.5));
+    sub.svg.style.opacity = s;
+    sub.svg.style.transform = `translateY(${14 * (1 - s)}px)`;
+  };
+  return {
+    update,
+    duration,
+    counted: [
+      ["見出し", readChars(COPY.hook)],
+      ["下の 1 行", readChars(COPY.sub)],
+    ],
   };
 }
 
-/** 出自。日本デザインセンターから生まれた iOS 用のエンジン stone_engine を継承したことを伝える。 */
-function lineage(root) {
+/**
+ * 出自。日本デザインセンター様から生まれた iOS 用のエンジン stone_engine を継承したことを伝える。
+ * promo/assets/stone-site.png（stone のサイトのスクリーンショット）があれば、図の左端に置く。
+ */
+function lineage(root, assets) {
+  const shot = assets.stoneSite;
+  if (shot) root.classList.add("lineage--shot");
   $("div", { class: "lineage__kicker", text: "ORIGIN" }, root);
   const L = lay(
     COPY.lineage,
-    { fontSize: 84, lineHeightScale: 1.55, textAlign: "center", fonts: F.minchoBold },
+    { fontSize: shot ? 76 : 84, lineHeightScale: 1.55, textAlign: "center", fonts: F.minchoBold },
     { width: 1680 },
   );
-  const st = new Stone(root).setLayout(L).place(120, 322);
-  const nameLength = COPY.lineageName.length;
+  const st = new Stone(root).setLayout(L).place(120, shot ? 196 : 322);
 
+  // 図。左から順に出す箱と、その間の矢印
   const row = $("div", { class: "lineage__row" }, root);
-  const from = $("div", { class: "lineage__node" }, row);
-  $("div", { class: "lineage__mark", text: "stone_engine" }, from);
-  $("div", { class: "lineage__note", text: COPY.lineageFrom }, from);
-  const arrow = $("div", { class: "lineage__arrow" }, row);
-  const shaft = $("i", {}, arrow);
-  const head = $("b", {}, arrow);
-  const to = $("div", { class: "lineage__node" }, row);
-  $("div", { class: "lineage__mark", text: "stone-engine.js" }, to);
-  $("div", { class: "lineage__note", text: COPY.lineageTo }, to);
-
-  const rise = (el, p) => {
-    el.style.opacity = p;
-    el.style.transform = `translateY(${22 * (1 - p)}px)`;
+  const nodes = [];
+  const arrows = [];
+  const node = (mark, note) => {
+    const el = $("div", { class: "lineage__node" }, row);
+    $("div", { class: "lineage__mark", text: mark }, el);
+    $("div", { class: "lineage__note", text: note }, el);
+    nodes.push(el);
   };
+  const arrow = () => {
+    const el = $("div", { class: "lineage__arrow" }, row);
+    arrows.push({ shaft: $("i", {}, el), head: $("b", {}, el) });
+  };
+  if (shot) {
+    const card = $("div", { class: "lineage__node" }, row);
+    const frame = $("div", { class: "lineage__frame" }, card);
+    shot.alt = "";
+    frame.appendChild(shot);
+    $("div", { class: "lineage__note", text: COPY.lineageShot }, card);
+    nodes.push(card);
+    arrow();
+  }
+  node("stone_engine", COPY.lineageFrom);
+  arrow();
+  node("stone-engine.js", COPY.lineageTo);
 
-  return (t) => {
-    // 先頭の社名は赤で組む
+  // 見出しを読み終えるころに図を出す。図の名前（英字）は見る時間として 2.5 秒、スクリーンショットがあれば、見る時間と注記を読む時間を足す
+  const readEnd = LEAD + readTime(COPY.lineage);
+  const step = 0.75;
+  const drawFrom = readEnd - 0.9;
+  const drawn = drawFrom + (nodes.length - 1) * step + 0.5;
+  const glance = 2.5 + (shot ? 1.5 + readTime(COPY.lineageShot) : 0);
+  const duration = roundUp(drawn + glance + TAIL);
+
+  const update = (t) => {
+    root.style.transform = `scale(${(1 + 0.012 * (t / duration)).toFixed(5)})`;
     st.draw((g, i) => {
       const t0 = 0.15 + i * 0.03;
       const p = E.out(seg(t, t0, t0 + 0.45));
-      return { opacity: p, y: g.y + 26 * (1 - p), fill: i < nameLength ? C.accent : C.ink };
+      return { opacity: p, y: g.y + 26 * (1 - p) };
     });
-    rise(from, E.out(seg(t, 1.2, 1.7)));
-    shaft.style.transform = `scaleX(${E.inOut(seg(t, 1.5, 2.1))})`;
-    head.style.opacity = E.out(seg(t, 1.95, 2.2));
-    rise(to, E.out(seg(t, 1.95, 2.45)));
+    nodes.forEach((el, k) => {
+      const p = E.out(seg(t, drawFrom + k * step, drawFrom + k * step + 0.5));
+      el.style.opacity = p;
+      el.style.transform = `translateY(${22 * (1 - p)}px)`;
+    });
+    arrows.forEach(({ shaft, head }, k) => {
+      const t0 = drawFrom + 0.3 + k * step;
+      shaft.style.transform = `scaleX(${E.inOut(seg(t, t0, t0 + 0.6))})`;
+      head.style.opacity = E.out(seg(t, t0 + 0.45, t0 + 0.7));
+    });
   };
+  const counted = [["見出し", readChars(COPY.lineage)]];
+  if (shot) counted.push(["スクリーンショットの注記", readChars(COPY.lineageShot)]);
+  return { update, duration, counted };
 }
 
 /** 01 縦書き。紙の高さを変えて、そのたびに組み直す。 */
@@ -422,10 +514,14 @@ function tategaki(root) {
   // 最初と最後は、どの段落も読点の後ろか文節で折り返す高さにする（実際のフォントで調べた値。語の途中で折り返さない）
   const H2 = 700;
 
-  return (t) => {
+  // 説明を読み終えてから、紙を縮めて、戻す
+  const moveFrom = LEAD + p.read + 0.6;
+  const duration = roundUp(moveFrom + 2.9 + HOLD + TAIL);
+
+  const update = (t) => {
     p(t);
-    let h = lerp(H0, H1, E.inOut(seg(t, 1.7, 2.9)));
-    h = lerp(h, H2, E.inOut(seg(t, 3.4, 4.5)));
+    let h = lerp(H0, H1, E.inOut(seg(t, moveFrom, moveFrom + 1.2)));
+    h = lerp(h, H2, E.inOut(seg(t, moveFrom + 1.8, moveFrom + 2.9)));
     const inner = Math.round(h - box.pad * 2);
     const L = layAt(inner);
     st.setLayout(L).place(box.x + box.w - box.pad - L.w, box.y + box.pad);
@@ -438,10 +534,11 @@ function tategaki(root) {
     grip.style.top = `${box.y + h - 5}px`;
     dim.style.top = `${box.y + h + 24}px`;
     dim.textContent = `height={${inner}}`;
-    const ui = E.out(seg(t, 0.9, 1.4));
+    const ui = E.out(seg(t, moveFrom - 0.6, moveFrom - 0.1));
     grip.style.opacity = ui;
     dim.style.opacity = ui;
   };
+  return { update, duration, counted: p.counted };
 }
 
 /** 02 禁則処理。行頭に来た「。」「ー」「」」を、kinsoku で前の文字ごと送る。 */
@@ -482,13 +579,20 @@ function kinsoku(root) {
   );
   const label = $("div", { class: "guide-label", text: "行頭", style: { left: `${ox - 62}px`, top: `${oy - 52}px` } }, root);
 
-  return (t) => {
-    const m = E.inOut(seg(t, 2.4, 3.3));
-    p(t, E.inOut(seg(t, 2.25, 2.7)));
+  // 説明を読み終えてから、行頭の文字に印を付け、それを見る時間を置いて、禁則を効かせる
+  const popFrom = LEAD + p.read + 0.1;
+  const popStep = 0.28;
+  const morphFrom = popFrom + (offenders.length - 1) * popStep + 0.35 + LOOK;
+  const morphTo = morphFrom + 0.9;
+  const duration = roundUp(morphTo + HOLD + TAIL);
+
+  const update = (t) => {
+    const m = E.inOut(seg(t, morphFrom, morphTo));
+    p(t, E.inOut(seg(t, morphFrom - 0.15, morphFrom + 0.3)));
     const g0 = E.out(seg(t, 0.45, 0.95));
     guide.style.transform = `scaleY(${g0})`;
     label.style.opacity = g0;
-    const pops = offenders.map((_, k) => seg(t, 0.95 + k * 0.28, 1.3 + k * 0.28));
+    const pops = offenders.map((_, k) => seg(t, popFrom + k * popStep, popFrom + k * popStep + 0.35));
 
     st.draw((a) => {
       const s = morph(a, B.byRun.get(a.runId), m);
@@ -503,18 +607,18 @@ function kinsoku(root) {
       const fa = offenders[k].run.frame;
       const fb = B.byRun.get(offenders[k].runId).run.frame;
       const scale = E.outBack(pops[k]);
-      const pad = 0;
-      const w = (fa.width + pad * 2) * scale;
-      const h = (fa.height + pad * 2) * scale;
+      const w = fa.width * scale;
+      const h = fa.height * scale;
       const cx = lerp(fa.x, fb.x, m) + fa.width / 2;
       const cy = lerp(fa.y, fb.y, m) + fa.height / 2;
       mark.setAttribute("x", (cx - w / 2).toFixed(2));
       mark.setAttribute("y", (cy - h / 2).toFixed(2));
       mark.setAttribute("width", Math.max(0, w).toFixed(2));
       mark.setAttribute("height", Math.max(0, h).toFixed(2));
-      mark.setAttribute("opacity", (seg(pops[k], 0, 0.4) * (1 - seg(t, 3.3, 3.8))).toFixed(3));
+      mark.setAttribute("opacity", (seg(pops[k], 0, 0.4) * (1 - seg(t, morphTo, morphTo + 0.5))).toFixed(3));
     });
   };
+  return { update, duration, counted: p.counted };
 }
 
 /** 03 約物の詰め。全角のままの組みから、前後を見て詰める組みへ。 */
@@ -554,11 +658,17 @@ function punct(root) {
     };
   });
 
-  return (t) => {
-    const m = E.inOut(seg(t, 1.75, 2.65));
-    p(t, E.inOut(seg(t, 1.6, 2.05)));
+  // 説明を読み終えてから、約物の箱を出し、それを見る時間を置いて、詰める
+  const showFrom = LEAD + p.read + 0.1;
+  const morphFrom = showFrom + 0.5 + LOOK;
+  const morphTo = morphFrom + 0.9;
+  const duration = roundUp(morphTo + HOLD + TAIL);
+
+  const update = (t) => {
+    const m = E.inOut(seg(t, morphFrom, morphTo));
+    p(t, E.inOut(seg(t, morphFrom - 0.15, morphFrom + 0.3)));
     st.draw((a) => morph(a, B.byRun.get(a.runId), m));
-    const show = E.out(seg(t, 0.7, 1.2));
+    const show = E.out(seg(t, showFrom, showFrom + 0.5));
     for (const box of boxes) {
       const fa = box.a.run.frame;
       const fb = box.b.run.frame;
@@ -577,6 +687,7 @@ function punct(root) {
       bar.now.setAttribute("opacity", m.toFixed(3));
     }
   };
+  return { update, duration, counted: p.counted };
 }
 
 /** 04 縦中横。寝ていた 2 桁の数字が、起きて横に並ぶ。 */
@@ -589,9 +700,14 @@ function tcy(root) {
   // 縦書きは右端の列から並ぶので、2 つの組みを右端でそろえて比べる
   const st = new Stone(root).setLayout(A).place(1490 - width, 176);
 
-  return (t) => {
-    const m = E.inOut(seg(t, 1.3, 2.2));
-    p(t, E.inOut(seg(t, 1.15, 1.6)));
+  // 説明を読み終えてから、作例を見る時間を置いて、数字を起こす
+  const morphFrom = LEAD + p.read + LOOK;
+  const morphTo = morphFrom + 0.9;
+  const duration = roundUp(morphTo + HOLD + TAIL);
+
+  const update = (t) => {
+    const m = E.inOut(seg(t, morphFrom, morphTo));
+    p(t, E.inOut(seg(t, morphFrom - 0.15, morphFrom + 0.3)));
     st.draw((a) => {
       const b = B.byRun.get(a.runId);
       const turns = a.rotate !== b.rotate;
@@ -603,6 +719,7 @@ function tcy(root) {
       };
     });
   };
+  return { update, duration, counted: p.counted };
 }
 
 /** 05 1 文字ずつ。文字の矩形を描き、点の下の文字を hitRunIndex で引く。 */
@@ -639,16 +756,24 @@ function inspect(root) {
   const to = centre("取");
   let last = -1;
 
-  return (t) => {
+  // 説明を読み終えてから、矩形を描き、点を動かす。点が止まってから、カードの注記を読む時間を取る
+  const frameFrom = LEAD + p.read + 0.1;
+  const onFrom = frameFrom + 0.9;
+  const moveFrom = onFrom + 0.5;
+  const moveTo = moveFrom + 2.0;
+  const duration = roundUp(moveTo + Math.max(HOLD, readTime(COPY.tipComment) + 0.5) + TAIL);
+
+  const update = (t) => {
     p(t);
     st.draw();
     frames.forEach((frame, i) => {
-      frame.setAttribute("opacity", (0.6 * E.out(seg(t, 0.5 + i * 0.045, 0.8 + i * 0.045))).toFixed(3));
+      const t0 = frameFrom + i * 0.045;
+      frame.setAttribute("opacity", (0.6 * E.out(seg(t, t0, t0 + 0.3))).toFixed(3));
     });
 
-    const u = E.inOut(seg(t, 1.7, 3.2));
+    const u = E.inOut(seg(t, moveFrom, moveTo));
     const point = { x: lerp(from.x, to.x, u), y: lerp(from.y, to.y, u) };
-    const on = E.out(seg(t, 1.3, 1.7));
+    const on = E.out(seg(t, onFrom, onFrom + 0.4));
     const index = L.ctx.hitRunIndex(point) ?? L.ctx.closestRunIndex(point);
     const run = L.ctx.runs[index];
     const f = run.frame;
@@ -687,10 +812,11 @@ function inspect(root) {
     leader.setAttribute("y2", (oy + f.y + f.height / 2).toFixed(2));
     leader.setAttribute("opacity", (0.8 * on).toFixed(3));
   };
+  return { update, duration, counted: [...p.counted, ["カードの注記", readChars(COPY.tipComment)]] };
 }
 
-/** 06 使い方とエンドカード。 */
-function outro(root, duration) {
+/** 使い方とエンドカード。 */
+function outro(root) {
   /* 使い方 */
   const use = $("div", { class: "use" }, root);
   $("div", { class: "use__kicker", text: "USAGE" }, use);
@@ -735,11 +861,17 @@ function outro(root, duration) {
     $("div", { class: "end__credit", text: COPY.credit }, end),
   ];
 
-  const typeFrom = 0.4;
-  const typeTo = 1.8;
-  const cut = 3.0;
+  // 使い方: 見出しを読み終えるころにコードを打ち始め、組んだ結果を出して、コードと結果を見る時間（3 秒）を取る
+  const typeFrom = LEAD + readTime(COPY.usageTitle) - 0.3;
+  const typeTo = typeFrom + 2.0;
+  const resultFrom = typeTo - 0.3;
+  const resultStep = 0.022;
+  const cut = resultFrom + novel.glyphs.length * resultStep + 0.3 + 3.0;
+  // エンドカード: 日本語の 2 行を読む時間に、パッケージ名・コマンド・タグ・URL を見る時間（3.5 秒）を足す
+  const cardFrom = cut + 0.8;
+  const duration = roundUp(cardFrom + readTime(COPY.sub, COPY.credit) + 3.5);
 
-  return (t) => {
+  const update = (t) => {
     /* 使い方 */
     const leave = E.inOut(seg(t, cut, cut + 0.35));
     use.style.opacity = 1 - leave;
@@ -755,14 +887,14 @@ function outro(root, duration) {
     if (typed > 0 && t < typeTo + 0.5) chars[typed - 1].after(caret);
     else caret.remove();
     result.draw((g, i) => {
-      const t0 = 1.5 + i * 0.022;
+      const t0 = resultFrom + i * resultStep;
       const q = E.out(seg(t, t0, t0 + 0.3));
       return { opacity: q, y: g.y - 14 * (1 - q) };
     });
 
     /* エンドカード */
     end.style.display = t < cut ? "none" : "block";
-    end.style.transform = `scale(${1 + 0.014 * seg(t, cut, duration)})`;
+    end.style.transform = `scale(${(1 + 0.014 * seg(t, cut, duration)).toFixed(5)})`;
     parts.forEach((part, k) => {
       const t0 = cut + 0.2 + k * 0.1;
       const q = E.out(seg(t, t0, t0 + 0.6));
@@ -770,23 +902,34 @@ function outro(root, duration) {
       part.style.transform = `translateY(${26 * (1 - q)}px)`;
     });
   };
+  return {
+    update,
+    duration,
+    headerOut: cut,
+    counted: [
+      ["使い方の見出し", readChars(COPY.usageTitle)],
+      ["エンドカードの 2 行", readChars(COPY.sub, COPY.credit)],
+    ],
+  };
 }
 
 /* ---------- タイムライン ---------- */
 
+/** シーンの並び。開始と終了の時刻は、各シーンが返す長さから boot() で決める。 */
 const TIMELINE = [
-  { name: "hook", build: hook, start: 0, end: 4.6, step: -1, noIn: true },
-  { name: "lineage", build: lineage, start: 4.6, end: 8.8, step: -1 },
-  { name: "tategaki", build: tategaki, start: 8.8, end: 14.4, step: 0 },
-  { name: "kinsoku", build: kinsoku, start: 14.4, end: 19.6, step: 1 },
-  { name: "punct", build: punct, start: 19.6, end: 24.0, step: 2 },
-  { name: "tcy", build: tcy, start: 24.0, end: 28.2, step: 3 },
-  { name: "inspect", build: inspect, start: 28.2, end: 32.2, step: 4 },
-  { name: "outro", build: outro, start: 32.2, end: 38.8, step: -1, noOut: true },
+  { name: "hook", build: hook, step: -1, noIn: true },
+  { name: "lineage", build: lineage, step: -1 },
+  { name: "tategaki", build: tategaki, step: 0 },
+  { name: "kinsoku", build: kinsoku, step: 1 },
+  { name: "punct", build: punct, step: 2 },
+  { name: "tcy", build: tcy, step: 3 },
+  { name: "inspect", build: inspect, step: 4 },
+  { name: "outro", build: outro, step: -1, noOut: true },
 ];
-const DURATION = TIMELINE[TIMELINE.length - 1].end;
-/** 使い方からエンドカードへ切り替わる時刻（ヘッダーを消す）。 */
-const HEADER_OUT = TIMELINE[TIMELINE.length - 1].start + 3.0;
+let DURATION = 0;
+/** ヘッダーを出す時刻（最初の機能のシーン）と、消す時刻（使い方からエンドカードへ切り替わるとき）。 */
+let HEADER_IN = 0;
+let HEADER_OUT = 0;
 
 let header = null;
 
@@ -815,12 +958,24 @@ function seek(time) {
     scene.update(local);
     step = scene.step;
   }
-  const first = TIMELINE.find((scene) => scene.step === 0).start;
-  header.el.style.opacity = (E.out(seg(t, first, first + 0.4)) * (1 - E.inOut(seg(t, HEADER_OUT, HEADER_OUT + 0.3)))).toFixed(3);
+  header.el.style.opacity = (
+    E.out(seg(t, HEADER_IN, HEADER_IN + 0.4)) *
+    (1 - E.inOut(seg(t, HEADER_OUT, HEADER_OUT + 0.3)))
+  ).toFixed(3);
   header.marks.forEach((mark, i) => mark.classList.toggle("on", i === step));
 }
 
 /* ---------- 起動 ---------- */
+
+/** 画像を読み込む。無ければ null（その画像を使う部分を出さない）。 */
+function loadImage(src) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
 
 async function boot() {
   const params = new URLSearchParams(location.search);
@@ -831,16 +986,33 @@ async function boot() {
   await loadFonts();
   measurer = getSharedCanvasMeasurer();
   measurer.invalidate();
+  // 任意の素材。リポジトリには入れていない（権利のある画像を置いたときだけ使う）
+  const assets = { stoneSite: await loadImage("./assets/stone-site.png") };
 
+  let at = 0;
   for (const scene of TIMELINE) {
     scene.root = $("div", { class: "scene", "data-scene": scene.name }, stage);
-    scene.update = scene.build(scene.root, scene.end - scene.start);
+    const made = scene.build(scene.root, assets);
+    scene.update = made.update;
+    scene.counted = made.counted ?? [];
+    scene.start = at;
+    scene.end = Math.round((at + made.duration) * 1000) / 1000;
+    if (made.headerOut !== undefined) HEADER_OUT = at + made.headerOut;
+    at = scene.end;
   }
+  DURATION = at;
+  HEADER_IN = TIMELINE.find((scene) => scene.step === 0).start;
   buildHeader(stage);
 
   window.__fps = FPS;
   window.__duration = DURATION;
   window.__frames = Math.round(DURATION * FPS);
+  window.__timeline = TIMELINE.map((scene) => ({
+    name: scene.name,
+    start: scene.start,
+    end: scene.end,
+    counted: scene.counted,
+  }));
   window.__seek = seek;
   seek(Number(params.get("t") ?? 0));
   window.__ready = true;

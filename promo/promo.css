@@ -196,7 +196,6 @@ svg.overlay {
 .code,
 .tip,
 .dim,
-.hook__npm,
 .end__npm {
   font-variant-ligatures: none;
 }
@@ -368,8 +367,8 @@ svg.overlay {
 }
 
 .end__credit {
-  top: 926px;
-  font: 500 27px/1 var(--gothic);
+  top: 922px;
+  font: 500 32px/1 var(--gothic);
   color: var(--ink-2);
   white-space: pre;
 }
@@ -412,6 +411,45 @@ svg.overlay {
   font: 500 29px/1 var(--gothic);
   color: var(--ink-2);
   white-space: nowrap;
+}
+
+/* stone のサイトのスクリーンショットを置くとき（promo/assets/stone-site.png があるとき）の配置 */
+
+.lineage--shot .lineage__kicker {
+  top: 142px;
+}
+
+.lineage--shot .lineage__row {
+  top: 478px;
+  align-items: center;
+  gap: 36px;
+}
+
+.lineage--shot .lineage__mark {
+  font-size: 58px;
+}
+
+.lineage--shot .lineage__arrow {
+  width: 120px;
+}
+
+.lineage__frame {
+  width: 592px;
+  height: 370px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-2);
+  box-shadow: 0 24px 48px -30px rgba(70, 50, 30, 0.35);
+}
+
+.lineage__frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
 }
 
 .lineage__arrow {
@@ -468,13 +506,4 @@ svg.overlay {
   font: 500 138px/1 var(--serif);
   letter-spacing: -0.005em;
   white-space: nowrap;
-}
-
-.hook__npm {
-  position: absolute;
-  left: 144px;
-  top: 740px;
-  font: 500 28px/1 var(--mono);
-  color: var(--ink-3);
-  white-space: pre;
 }
